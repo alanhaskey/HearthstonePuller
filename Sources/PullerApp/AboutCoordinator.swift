@@ -19,9 +19,9 @@ struct AboutMetadata {
 
     var informativeText: String {
         """
-        作者 / Author: \(author)
+        Author: \(author)
         GitHub: \(repositoryURL.absoluteString)
-        版本 / Version: \(version)
+        Version: \(version)
         """
     }
 }
