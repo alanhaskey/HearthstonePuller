@@ -3,10 +3,11 @@ public enum PullerState: String, Codable, Sendable, Equatable {
     case absent
     case ready
     case cutting
+    case notTriggered
     case waitingForReconnect
     case error
 
     public var isActionable: Bool {
-        self == .ready
+        self == .ready || self == .notTriggered
     }
 }

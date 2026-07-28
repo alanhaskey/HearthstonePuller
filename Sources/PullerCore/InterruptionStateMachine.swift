@@ -35,6 +35,8 @@ public struct InterruptionStateMachine: Sendable {
         switch state {
         case .cutting:
             break
+        case .notTriggered:
+            break
         case .waitingForReconnect:
             if self.connectionCount > 0 {
                 state = .ready
@@ -49,7 +51,7 @@ public struct InterruptionStateMachine: Sendable {
         if state == .cutting {
             throw InterruptionStateError.alreadyCutting
         }
-        guard state == .ready else {
+        guard state.isActionable else {
             throw InterruptionStateError.notReady
         }
 
@@ -61,6 +63,17 @@ public struct InterruptionStateMachine: Sendable {
         guard state == .cutting else { return }
         state = .waitingForReconnect
         connectionCount = 0
+    }
+
+    public mutating func markNotTriggered() {
+        guard state == .cutting else { return }
+        state = .notTriggered
+        message = nil
+    }
+
+    public mutating func reconnectTimedOut() {
+        guard state == .waitingForReconnect else { return }
+        markAbsent()
     }
 
     public mutating func restore(connectionCount: Int) {

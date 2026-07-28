@@ -9,7 +9,8 @@ final class PanelStateViewModelTests: XCTestCase {
             (.helperUnavailable, "需要安装", true),
             (.absent, "未检测到对局", false),
             (.ready, "一键拔线", true),
-            (.cutting, "拔线中", false),
+            (.cutting, "等待连接活动", false),
+            (.notTriggered, "未触发", true),
             (.waitingForReconnect, "等待重连", false),
             (.error, "服务异常", true),
         ]
@@ -28,6 +29,18 @@ final class PanelStateViewModelTests: XCTestCase {
         viewModel.apply(snapshot(state: .ready))
 
         await viewModel.performPrimaryAction()
+        await viewModel.performPrimaryAction()
+
+        let requests = await client.requests()
+        XCTAssertEqual(requests, [.cut])
+        XCTAssertEqual(viewModel.state, .cutting)
+    }
+
+    func testNotTriggeredClickRetriesCut() async {
+        let client = FakeHelperClient(response: .accepted(snapshot(state: .cutting)))
+        let viewModel = PanelStateViewModel(client: client)
+        viewModel.apply(snapshot(state: .notTriggered))
+
         await viewModel.performPrimaryAction()
 
         let requests = await client.requests()

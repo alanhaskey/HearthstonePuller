@@ -106,7 +106,8 @@ public final class PanelStateViewModel {
         case .helperUnavailable: "需要安装"
         case .absent: "未检测到对局"
         case .ready: "一键拔线"
-        case .cutting: "拔线中"
+        case .cutting: "等待连接活动"
+        case .notTriggered: "未触发"
         case .waitingForReconnect: "等待重连"
         case .error: "服务异常"
         }
@@ -114,7 +115,7 @@ public final class PanelStateViewModel {
 
     public var isEnabled: Bool {
         switch state {
-        case .helperUnavailable, .ready, .error: true
+        case .helperUnavailable, .ready, .notTriggered, .error: true
         case .absent, .cutting, .waitingForReconnect: false
         }
     }
@@ -125,7 +126,7 @@ public final class PanelStateViewModel {
 
     public func performPrimaryAction() async {
         switch state {
-        case .ready:
+        case .ready, .notTriggered:
             await send(.cut)
         case .helperUnavailable, .error:
             await refresh()
