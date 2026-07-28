@@ -4,12 +4,22 @@ import PullerCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let viewModel = PanelStateViewModel(client: HelperClient())
+    private let serviceInstallationChecker: any ServiceInstallationChecking
     private lazy var serviceCoordinator = ServiceOperationCoordinator(
         manager: ServiceManager(),
         viewModel: viewModel
     )
     private var panelController: FloatingPanelController?
     private var pollingTask: Task<Void, Never>?
+
+    override convenience init() {
+        self.init(serviceInstallationChecker: ServiceInstallationDetector())
+    }
+
+    init(serviceInstallationChecker: any ServiceInstallationChecking) {
+        self.serviceInstallationChecker = serviceInstallationChecker
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let panelController = FloatingPanelController()
@@ -56,18 +66,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(item("重新检测", action: #selector(redetect)))
         menu.addItem(item("恢复网络", action: #selector(restore)))
-        let install = item(
-            ServiceOperationCoordinator.installMenuTitle,
-            action: #selector(installService)
+        let serviceModel = ServiceMenuModel(
+            installationStatus: serviceInstallationChecker.status(),
+            isOperationInProgress: serviceCoordinator.isOperationInProgress
         )
-        let uninstall = item(
-            ServiceOperationCoordinator.uninstallMenuTitle,
-            action: #selector(uninstallService)
-        )
-        install.isEnabled = !serviceCoordinator.isOperationInProgress
-        uninstall.isEnabled = !serviceCoordinator.isOperationInProgress
-        menu.addItem(install)
-        menu.addItem(uninstall)
+        let serviceAction: Selector = switch serviceModel.operation {
+        case .install: #selector(installService)
+        case .uninstall: #selector(uninstallService)
+        }
+        let serviceItem = item(serviceModel.title, action: serviceAction)
+        serviceItem.isEnabled = serviceModel.isEnabled
+        menu.addItem(serviceItem)
         menu.addItem(.separator())
         menu.addItem(item("退出", action: #selector(quit)))
         return menu
