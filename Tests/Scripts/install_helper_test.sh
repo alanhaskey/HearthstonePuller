@@ -16,6 +16,13 @@ launch_log="$test_root/launch.log"
 cat > "$test_root/bin/launchctl" <<'SH'
 #!/bin/sh
 printf '%s\n' "$*" >> "$PULLER_LAUNCH_LOG"
+if [ "${PULLER_LAUNCH_FAIL_ONCE:-0}" = "1" ] \
+  && [ "${1:-}" = "bootstrap" ] \
+  && echo "$*" | grep -q recovery \
+  && [ ! -e "$PULLER_LAUNCH_FAILURE_MARKER" ]; then
+  : > "$PULLER_LAUNCH_FAILURE_MARKER"
+  exit 5
+fi
 exit 0
 SH
 chmod 755 "$test_root/bin/launchctl"
@@ -26,6 +33,8 @@ common_env=(
   PULLER_ARTIFACT_DIR="$artifacts"
   PULLER_LAUNCHCTL="$test_root/bin/launchctl"
   PULLER_LAUNCH_LOG="$launch_log"
+  PULLER_LAUNCH_FAIL_ONCE=1
+  PULLER_LAUNCH_FAILURE_MARKER="$test_root/launch-failed-once"
   PULLER_CONSOLE_UID=501
 )
 
@@ -50,6 +59,8 @@ grep -q '<integer>501</integer>' "$config"
 recovery_line="$(grep -n 'bootstrap.*recovery' "$launch_log" | head -1 | cut -d: -f1)"
 helper_line="$(grep -n 'bootstrap.*helper' "$launch_log" | head -1 | cut -d: -f1)"
 test "$recovery_line" -lt "$helper_line"
+test "$(grep -c 'bootstrap.*recovery' "$launch_log")" = "2"
+test "$(grep -c 'bootstrap.*helper' "$launch_log")" = "1"
 
 env "${common_env[@]}" bash "$repo_root/scripts/uninstall-helper.sh"
 env "${common_env[@]}" bash "$repo_root/scripts/uninstall-helper.sh"

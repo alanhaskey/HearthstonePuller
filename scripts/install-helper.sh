@@ -74,8 +74,20 @@ trap - EXIT
 
 "$launchctl_bin" bootout system/com.yunnn.hearthstone-puller.helper 2>/dev/null || true
 "$launchctl_bin" bootout system/com.yunnn.hearthstone-puller.recovery 2>/dev/null || true
-"$launchctl_bin" bootstrap system "$recovery_plist"
-"$launchctl_bin" bootstrap system "$helper_plist"
+
+bootstrap_service() {
+  local plist="$1" attempt
+  for attempt in 1 2 3 4; do
+    if "$launchctl_bin" bootstrap system "$plist" 2>/dev/null; then
+      return
+    fi
+    /bin/sleep 0.2
+  done
+  "$launchctl_bin" bootstrap system "$plist"
+}
+
+bootstrap_service "$recovery_plist"
+bootstrap_service "$helper_plist"
 
 PULLER_INSTALL_ROOT="$install_root" PULLER_INSTALL_TESTING="$testing" \
   PULLER_LAUNCHCTL="$launchctl_bin" bash "$script_dir/verify-installation.sh"
