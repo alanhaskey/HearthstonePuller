@@ -18,7 +18,7 @@ Network type (Wi-Fi/Ethernet/hotspot/VPN):
 ## One Non-Ranked Cut
 
 - [ ] Use a non-ranked match or safe practice context.
-- [ ] Click once and confirm the UI shows `断线中 1.5s`.
+- [ ] Click once and confirm the UI shows `断线中 0.5s`.
 - [ ] Confirm the game reconnects without leaving the match.
 - [ ] Confirm the anchor is empty by approximately T+2.2 seconds.
 - [ ] Confirm a second click cannot extend the window.

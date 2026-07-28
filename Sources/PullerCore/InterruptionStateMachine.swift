@@ -23,7 +23,7 @@ public enum InterruptionStateError: Error, Equatable {
 }
 
 public struct InterruptionStateMachine: Sendable {
-    public static let cutDuration = Duration.milliseconds(1_500)
+    public static let cutDuration = Duration.milliseconds(500)
 
     private var state: PullerState = .absent
     private var connectionCount = 0

@@ -1,6 +1,6 @@
 # HearthstonePuller for macOS
 
-个人使用的 macOS 炉石传说“拔线器”。它显示一个始终置顶的 88 × 88 悬浮按钮，点击后只针对当前已验证的炉石进程所连接的远端地址，使用独立 PF anchor 阻断 1.5 秒，然后自动恢复。
+个人使用的 macOS 炉石传说“拔线器”。它显示一个始终置顶的 88 × 88 悬浮按钮，点击后只针对当前已验证的炉石进程所连接的远端地址，使用独立 PF anchor 阻断 0.5 秒，然后自动恢复。
 
 ## 边界
 
@@ -40,7 +40,7 @@ open build/HearthstonePuller.app
 
 ## 紧急恢复
 
-正常情况下 helper 在 1.5 秒清除规则，独立 recovery daemon 约 2 秒再次清除。若需要手动恢复，只清理本工具专属 anchor：
+正常情况下 helper 在 0.5 秒清除规则，独立 recovery daemon 约 2 秒再次清除。若需要手动恢复，只清理本工具专属 anchor：
 
 ```bash
 sudo pfctl -a com.apple/hearthstone-puller -F all

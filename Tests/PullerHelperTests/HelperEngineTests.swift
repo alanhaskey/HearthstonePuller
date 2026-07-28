@@ -14,7 +14,7 @@ final class HelperEngineTests: XCTestCase {
             return XCTFail("Expected accepted response, got \(response)")
         }
         XCTAssertEqual(snapshot.state, .cutting)
-        XCTAssertEqual(snapshot.remainingMilliseconds, 1_500)
+        XCTAssertEqual(snapshot.remainingMilliseconds, 500)
 
         await fixture.events.waitFor("pf.flush")
         let finished = await engine.handle(.status)
@@ -67,9 +67,9 @@ final class HelperEngineTests: XCTestCase {
         guard case let .rejected(code, _, secondSnapshot) = second else {
             return XCTFail("Second cut should be rejected")
         }
-        XCTAssertEqual(firstSnapshot.remainingMilliseconds, 1_500)
+        XCTAssertEqual(firstSnapshot.remainingMilliseconds, 500)
         XCTAssertEqual(code, "already_cutting")
-        XCTAssertEqual(secondSnapshot.remainingMilliseconds, 1_500)
+        XCTAssertEqual(secondSnapshot.remainingMilliseconds, 500)
         let armCount = await fixture.recovery.armCount()
         XCTAssertEqual(armCount, 1)
         await engine.shutdown()

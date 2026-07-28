@@ -4,7 +4,7 @@ Date: 2026-07-28
 
 ## 1. Purpose
 
-Build a personal-use macOS utility that displays an always-visible floating button and temporarily interrupts Hearthstone's network connections for exactly 1.5 seconds. Hearthstone is expected to reconnect by itself. The utility must avoid disrupting unrelated applications as far as macOS Packet Filter (PF) permits.
+Build a personal-use macOS utility that displays an always-visible floating button and temporarily interrupts Hearthstone's network connections for exactly 0.5 seconds. Hearthstone is expected to reconnect by itself. The utility must avoid disrupting unrelated applications as far as macOS Packet Filter (PF) permits.
 
 The first version does not use Network Extension because that capability requires a paid Apple Developer Program team on a normally secured Mac. It uses a narrowly scoped privileged helper and PF instead. This provides best-effort Hearthstone isolation, not the absolute per-process isolation available through Network Extension.
 
@@ -16,7 +16,7 @@ The first version does not use Network Extension because that capability require
 - Universal Apple silicon and Intel builds.
 - An always-visible, draggable, square floating button.
 - Detection of a running Hearthstone process and its active TCP/UDP sockets.
-- A fixed 1.5-second interruption window.
+- A fixed 0.5-second interruption window.
 - A root launch daemon installed once with explicit administrator approval.
 - Dedicated PF anchor management without replacing the system PF configuration.
 - Automatic, independent, and manual recovery paths.
@@ -51,7 +51,7 @@ The last position is persisted. On display topology or resolution changes, the a
 | Helper unavailable | `需要安装` | Yes | Opens the one-time helper installation instructions. |
 | Hearthstone absent | `未检测到炉石` | No | No verified Hearthstone process or socket is available. |
 | Ready | `一键拔线` | Yes | At least one verified Hearthstone network connection exists. |
-| Cutting | `断线中 1.5s` | No | PF rules are active and the deadline has not passed. |
+| Cutting | `断线中 0.5s` | No | PF rules are active and the deadline has not passed. |
 | Waiting for reconnect | `等待重连` | No | Rules are clear; the app is waiting for a new verified Hearthstone flow. |
 | Helper error | `服务异常` | Yes | Clicking requests recovery and refreshes status. |
 
@@ -154,7 +154,7 @@ The helper uses `proc_pidinfo`, `PROC_PIDLISTFDS`, and socket descriptor informa
 
 Payload data is neither read nor stored.
 
-The initial implementation must support established TCP connections and connected UDP sockets. During an active cut window it polls quickly enough to observe reconnect attempts and add newly observed remote endpoints. Polling is bounded to the 1.5-second window and stops immediately afterward.
+The initial implementation must support established TCP connections and connected UDP sockets. During an active cut window it polls quickly enough to observe reconnect attempts and add newly observed remote endpoints. Polling is bounded to the 0.5-second window and stops immediately afterward.
 
 ## 7. PF Rule Strategy
 
@@ -166,7 +166,7 @@ com.apple/hearthstone-puller
 
 The default macOS PF configuration exposes the `com.apple/*` anchor point. The helper verifies this before activation. It does not edit or reload `/etc/pf.conf`, flush the root ruleset, disable PF globally, or modify another anchor.
 
-For each verified Hearthstone connection, the helper builds IPv4 or IPv6 `block return` rules covering both directions. PF returns TCP RST or ICMP unreachable so the application socket closes instead of silently tolerating a 1.5-second packet-loss window. Rules constrain the remote address, protocol, and remote port. The initial local tuple may also be included for diagnostics, but the active 1.5-second rule must continue to match an immediate reconnect that uses a new local ephemeral port.
+For each verified Hearthstone connection, the helper builds IPv4 or IPv6 `block return` rules covering both directions. PF returns TCP RST or ICMP unreachable so the application socket closes instead of silently tolerating packet loss. Rules constrain the remote address, protocol, and remote port. The initial local tuple may also be included for diagnostics, but the active 0.5-second rule must continue to match an immediate reconnect that uses a new local ephemeral port.
 
 PF state lookup can allow an already-established connection to bypass newly loaded rules. The helper therefore removes state entries between the local host and the verified remote address after installing the block rule. macOS PF cannot delete state by PID, so an unrelated application connected to the same remote address may also lose that connection. This is an explicit limitation of this architecture.
 
@@ -186,7 +186,7 @@ ABSENT -> READY -> CUTTING -> WAITING_RECONNECT -> READY
 
 - `ABSENT -> READY`: a verified Hearthstone socket appears.
 - `READY -> CUTTING`: a valid `cut` request arrives.
-- `CUTTING -> WAITING_RECONNECT`: the 1.5-second monotonic deadline expires and the anchor is flushed.
+- `CUTTING -> WAITING_RECONNECT`: the 0.5-second monotonic deadline expires and the anchor is flushed.
 - `WAITING_RECONNECT -> READY`: a new verified Hearthstone connection appears.
 - Any state to `ABSENT`: the verified process exits and no qualifying socket remains.
 - Any failure during `CUTTING`: immediately flush the anchor, report an error, and fail open.
@@ -205,7 +205,7 @@ Normal timing:
 T+0.0  Recovery daemon armed and acknowledgement received
 T+0.0  Dedicated anchor rules installed
 T+0.0  Matching endpoint states removed
-T+1.5  Helper flushes dedicated anchor
+T+0.5  Helper flushes dedicated anchor
 T+2.0  Recovery daemon flushes the same anchor again
 ```
 
@@ -249,7 +249,7 @@ Removal first invokes `restore`, unloads both daemons, flushes the dedicated anc
 ### Unit tests
 
 - State-machine transitions and repeated-click rejection.
-- Fixed 1.5-second deadline behavior with an injected clock.
+- Fixed 0.5-second deadline behavior with an injected clock.
 - Process start identity and PID reuse handling.
 - Code-signature and bundle-path verification.
 - Socket metadata conversion for IPv4, IPv6, TCP, and UDP.
@@ -274,7 +274,7 @@ Use two local signed test clients and local TCP/UDP servers:
 
 - Identify the actual Hearthstone executable and any in-bundle networking helper.
 - Confirm that Battle.net launcher traffic is not selected.
-- Measure whether 1.5 seconds reliably triggers Hearthstone reconnect behavior.
+- Measure whether 0.5 seconds reliably triggers Hearthstone reconnect behavior.
 - Verify browser downloads, music, chat, and voice traffic remain connected.
 - Exercise Wi-Fi, Ethernet, hotspot, common VPN, IPv4, and IPv6 paths.
 - Repeat cuts and game restarts without stale state or UI desynchronization.
@@ -284,7 +284,7 @@ Use two local signed test clients and local TCP/UDP servers:
 
 - The floating square remains visible across Spaces and full-screen Hearthstone without stealing focus.
 - The button is disabled unless the helper reports at least one verified Hearthstone socket.
-- One click performs exactly one non-extendable 1.5-second cut.
+- One click performs exactly one non-extendable 0.5-second cut.
 - PF rules exist only in `com.apple/hearthstone-puller` and are absent after the deadline.
 - The root PF configuration and unrelated anchors are never reloaded, flushed, or edited.
 - Only endpoints currently observed from a verified Hearthstone process are targeted.

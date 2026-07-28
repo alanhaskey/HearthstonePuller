@@ -106,7 +106,7 @@ public final class PanelStateViewModel {
         case .helperUnavailable: "需要安装"
         case .absent: "未检测到炉石"
         case .ready: "一键拔线"
-        case .cutting: "断线中 1.5s"
+        case .cutting: "断线中 0.5s"
         case .waitingForReconnect: "等待重连"
         case .error: "服务异常"
         }

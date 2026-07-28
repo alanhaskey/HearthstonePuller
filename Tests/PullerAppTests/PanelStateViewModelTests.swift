@@ -9,7 +9,7 @@ final class PanelStateViewModelTests: XCTestCase {
             (.helperUnavailable, "需要安装", true),
             (.absent, "未检测到炉石", false),
             (.ready, "一键拔线", true),
-            (.cutting, "断线中 1.5s", false),
+            (.cutting, "断线中 0.5s", false),
             (.waitingForReconnect, "等待重连", false),
             (.error, "服务异常", true),
         ]
@@ -64,7 +64,7 @@ private func snapshot(state: PullerState) -> PullerSnapshot {
     PullerSnapshot(
         state: state,
         connectionCount: state == .absent ? 0 : 1,
-        remainingMilliseconds: state == .cutting ? 1_500 : 0
+        remainingMilliseconds: state == .cutting ? 500 : 0
     )
 }
 
