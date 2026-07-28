@@ -16,7 +16,11 @@ let package = Package(
             publicHeadersPath: "include",
             linkerSettings: [.linkedLibrary("proc")]
         ),
-        .target(name: "PullerSystem", dependencies: ["PullerCore", "CProcShim"]),
+        .target(
+            name: "PullerSystem",
+            dependencies: ["PullerCore", "CProcShim"],
+            linkerSettings: [.linkedFramework("Security")]
+        ),
         .testTarget(name: "PullerCoreTests", dependencies: ["PullerCore"]),
         .testTarget(name: "PullerSystemTests", dependencies: ["PullerSystem"]),
     ]
