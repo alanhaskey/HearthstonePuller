@@ -3,3 +3,4 @@ build/
 .swiftpm/
 *.xcuserstate
 .DS_Store
+.superpowers/
