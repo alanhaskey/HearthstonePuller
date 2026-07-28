@@ -35,7 +35,7 @@ let bindResult = withUnsafePointer(to: &address) { pointer in
 }
 guard bindResult == 0, listen(listener, 8) == 0 else { exit(EXIT_FAILURE) }
 
-func echo(descriptor: Int32) {
+@Sendable func echo(descriptor: Int32) {
     defer { close(descriptor) }
     var buffer = Array(repeating: UInt8(0), count: 4_096)
     while true {

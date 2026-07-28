@@ -55,5 +55,11 @@ sudo pfctl -a com.apple/hearthstone-puller -sr
 
 Observed results:
 
+- 2026-07-28, macOS 26.6 (25G72), arm64, default interface `en0`.
+- `swift test`: 54 tests executed, 0 failures, 2 explicitly gated tests skipped.
+- `install_helper_test.sh`: fake-root install, recovery-first bootstrap, symlink refusal, and idempotent uninstall passed.
+- `integration-test.sh --dry-run`: two loopback clients transferred continuously for five seconds with no gap over 500 ms.
+- Universal release build: app, helper, and recovery each contain `x86_64` and `arm64`.
+- Ad-hoc app signature passed `codesign --verify --deep --strict`.
 - Not yet executed against a live Hearthstone session.
-- Root PF integration requires explicit user approval and `PF_INTEGRATION_TEST=1`.
+- Root PF integration and anchor-empty confirmation were not run; they require explicit user approval and `PF_INTEGRATION_TEST=1`.
