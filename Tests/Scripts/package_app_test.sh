@@ -13,6 +13,8 @@ service="$resources/Service"
 icon="$resources/AppIcon.icns"
 
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$app/Contents/Info.plist")" = "AppIcon.icns"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "1.0.0"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "1"
 test -s "$icon"
 
 expected_service_files=(

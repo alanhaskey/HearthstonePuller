@@ -5,6 +5,7 @@ import PullerCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let viewModel = PanelStateViewModel(client: HelperClient())
     private let serviceInstallationChecker: any ServiceInstallationChecking
+    private let aboutCoordinator = AboutCoordinator()
     private lazy var serviceCoordinator = ServiceOperationCoordinator(
         manager: ServiceManager(),
         viewModel: viewModel
@@ -78,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         serviceItem.isEnabled = serviceModel.isEnabled
         menu.addItem(serviceItem)
         menu.addItem(.separator())
+        menu.addItem(item("关于 HearthstonePuller", action: #selector(showAbout)))
         menu.addItem(item("退出", action: #selector(quit)))
         return menu
     }
@@ -112,6 +114,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         alert.addButton(withTitle: "好")
         alert.runModal()
+    }
+
+    @objc private func showAbout() {
+        let alert = NSAlert()
+        alert.messageText = aboutCoordinator.metadata.applicationName
+        alert.informativeText = aboutCoordinator.metadata.informativeText
+        alert.addButton(withTitle: "打开 GitHub / Open GitHub")
+        alert.addButton(withTitle: "好 / OK")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard aboutCoordinator.openRepository() else {
+            let failureAlert = NSAlert()
+            failureAlert.messageText = AboutCoordinator.openFailureMessage
+            failureAlert.addButton(withTitle: "好 / OK")
+            failureAlert.runModal()
+            return
+        }
     }
 
     @objc private func quit() {
