@@ -14,9 +14,9 @@ final class HelperEngineTests: XCTestCase {
             return XCTFail("Expected accepted response, got \(response)")
         }
         XCTAssertEqual(snapshot.state, .cutting)
-        XCTAssertEqual(snapshot.remainingMilliseconds, 500)
+        XCTAssertEqual(snapshot.remainingMilliseconds, 0)
 
-        await fixture.events.waitFor("pf.flush")
+        await fixture.events.waitFor("recovery.flushNow")
         let finished = await engine.handle(.status)
         guard case let .status(finishedSnapshot) = finished else {
             return XCTFail("Expected status response")
@@ -34,6 +34,7 @@ final class HelperEngineTests: XCTestCase {
                 "pf.killStates",
                 "time.sleep",
                 "pf.flush",
+                "recovery.flushNow",
             ],
             in: events
         )
@@ -67,9 +68,9 @@ final class HelperEngineTests: XCTestCase {
         guard case let .rejected(code, _, secondSnapshot) = second else {
             return XCTFail("Second cut should be rejected")
         }
-        XCTAssertEqual(firstSnapshot.remainingMilliseconds, 500)
+        XCTAssertEqual(firstSnapshot.remainingMilliseconds, 0)
         XCTAssertEqual(code, "already_cutting")
-        XCTAssertEqual(secondSnapshot.remainingMilliseconds, 500)
+        XCTAssertEqual(secondSnapshot.remainingMilliseconds, 0)
         let armCount = await fixture.recovery.armCount()
         XCTAssertEqual(armCount, 1)
         await engine.shutdown()
@@ -126,19 +127,70 @@ final class HelperEngineTests: XCTestCase {
         XCTAssertEqual(flushCount, 2)
     }
 
-    func testPollingRuleUpdateFailureFlushesAndReportsError() async throws {
-        let secondSocket = try ObservedSocket(
+    func testReplacementSocketIsNeverBlockedOrKilled() async throws {
+        let replacement = try ObservedSocket(
+            family: .ipv4,
+            transport: .tcp,
+            localAddress: "192.0.2.10",
+            localPort: 50_124,
+            remoteAddress: "198.51.100.20",
+            remotePort: 3_724
+        )
+        let fixture = try HelperFixture(
+            observedSockets: [[try HelperFixture.socket()], [replacement]]
+        )
+        let engine = fixture.makeEngine()
+
+        _ = await engine.handle(.cut)
+        await fixture.events.waitFor("recovery.flushNow")
+        let response = await engine.handle(.status)
+
+        guard case let .status(snapshot) = response else {
+            return XCTFail("Expected status response")
+        }
+        let replaceCount = await fixture.pf.replaceCount()
+        let killCount = await fixture.pf.killCount()
+        XCTAssertEqual(snapshot.state, .waitingForReconnect)
+        XCTAssertEqual(replaceCount, 1)
+        XCTAssertEqual(killCount, 1)
+    }
+
+    func testRejectsCutWhenOnlyNonGameConnectionsExist() async throws {
+        let https = try ObservedSocket(
             family: .ipv4,
             transport: .tcp,
             localAddress: "192.0.2.10",
             localPort: 50_124,
             remoteAddress: "198.51.100.21",
-            remotePort: 3_724
+            remotePort: 443
         )
-        let fixture = try HelperFixture(
-            observedSockets: [[try HelperFixture.socket()], [secondSocket]],
-            pfFailure: .replace(call: 2)
+        let login = try ObservedSocket(
+            family: .ipv4,
+            transport: .tcp,
+            localAddress: "192.0.2.10",
+            localPort: 50_125,
+            remoteAddress: "198.51.100.22",
+            remotePort: 1_119
         )
+        let fixture = try HelperFixture(observedSockets: [[https, login]])
+        let engine = fixture.makeEngine()
+
+        let response = await engine.handle(.cut)
+
+        guard case let .rejected(code, _, snapshot) = response else {
+            return XCTFail("Expected non-game connections to be rejected")
+        }
+        let replaceCount = await fixture.pf.replaceCount()
+        let killCount = await fixture.pf.killCount()
+        XCTAssertEqual(code, "no_game_connection")
+        XCTAssertEqual(snapshot.state, .absent)
+        XCTAssertEqual(replaceCount, 0)
+        XCTAssertEqual(killCount, 0)
+    }
+
+    func testResetTimesOutFailOpenWhenOriginalTupleRemains() async throws {
+        let original = try HelperFixture.socket()
+        let fixture = try HelperFixture(observedSockets: [[original]])
         let engine = fixture.makeEngine()
 
         _ = await engine.handle(.cut)
@@ -150,6 +202,7 @@ final class HelperEngineTests: XCTestCase {
         }
         let flushCount = await fixture.pf.flushCount()
         XCTAssertEqual(snapshot.state, .error)
+        XCTAssertEqual(snapshot.message, "game connection reset timed out")
         XCTAssertGreaterThanOrEqual(flushCount, 1)
     }
 }
@@ -192,7 +245,7 @@ private final class HelperFixture: @unchecked Sendable {
         if let observedSockets {
             socketObservations = observedSockets
         } else {
-            socketObservations = [[try Self.socket()]]
+            socketObservations = [[try Self.socket()], []]
         }
         self.sockets = FakeSockets(
             identity: process.startIdentity,
@@ -304,6 +357,7 @@ private actor FakePF: PFControlling {
     private let failure: Failure?
     private let events: HelperEventLog
     private var replaceCalls = 0
+    private var killCalls = 0
     private var flushes = 0
 
     init(failure: Failure?, events: HelperEventLog) {
@@ -321,6 +375,7 @@ private actor FakePF: PFControlling {
     }
 
     func killStates(_ pairs: [StatePair]) async throws {
+        killCalls += 1
         events.append("pf.killStates")
         if failure == .killStates { throw failure! }
     }
@@ -334,6 +389,7 @@ private actor FakePF: PFControlling {
     func releaseEnableReference() async { events.append("pf.release") }
     func flushCount() -> Int { flushes }
     func replaceCount() -> Int { replaceCalls }
+    func killCount() -> Int { killCalls }
 }
 
 private actor FakeRecovery: RecoveryArming {

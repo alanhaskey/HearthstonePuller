@@ -2,28 +2,29 @@ import XCTest
 @testable import PullerCore
 
 final class InterruptionStateMachineTests: XCTestCase {
-    func testCutHasFixedDeadlineAndCannotBeExtended() throws {
+    func testCutRequiresExplicitResetCompletionAndCannotBeExtended() throws {
         var machine = InterruptionStateMachine()
         machine.observe(connectionCount: 1)
 
-        try machine.beginCut(now: .seconds(10))
+        try machine.beginCut()
 
-        XCTAssertEqual(machine.snapshot(now: .seconds(10)).remainingMilliseconds, 500)
-        XCTAssertThrowsError(try machine.beginCut(now: .seconds(10.2)))
+        XCTAssertEqual(machine.snapshot().state, .cutting)
+        XCTAssertEqual(machine.snapshot().remainingMilliseconds, 0)
+        XCTAssertThrowsError(try machine.beginCut())
 
-        machine.deadlineReached(now: .seconds(10.5))
+        machine.resetCompleted()
 
-        XCTAssertEqual(machine.snapshot(now: .seconds(10.5)).state, .waitingForReconnect)
+        XCTAssertEqual(machine.snapshot().state, .waitingForReconnect)
     }
 
-    func testNewConnectionAfterDeadlineReturnsToReady() throws {
+    func testNewConnectionAfterResetReturnsToReady() throws {
         var machine = InterruptionStateMachine()
         machine.observe(connectionCount: 1)
-        try machine.beginCut(now: .zero)
-        machine.deadlineReached(now: .milliseconds(500))
+        try machine.beginCut()
+        machine.resetCompleted()
 
         machine.observe(connectionCount: 1)
 
-        XCTAssertEqual(machine.snapshot(now: .milliseconds(500)).state, .ready)
+        XCTAssertEqual(machine.snapshot().state, .ready)
     }
 }

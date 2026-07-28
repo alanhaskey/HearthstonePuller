@@ -13,15 +13,19 @@ Network type (Wi-Fi/Ethernet/hotspot/VPN):
 - [ ] Record every observed in-bundle process; confirm Battle.net and beta launchers are excluded.
 - [ ] Record active IPv4 and IPv6 TCP endpoints before cut.
 - [ ] Record active IPv4 and IPv6 connected UDP endpoints before cut.
+- [ ] Identify the original TCP `3724` tuple, including its local ephemeral port.
 - [ ] Confirm the dedicated anchor is empty before enabling a real cut.
 
 ## One Non-Ranked Cut
 
 - [ ] Use a non-ranked match or safe practice context.
-- [ ] Click once and confirm the UI shows `断线中 0.5s`.
+- [ ] Click once and confirm the UI shows `拔线中` without a countdown.
+- [ ] Confirm active PF rules contain only the captured TCP `3724` tuple, including its local port.
+- [ ] Confirm TCP `443` and TCP `1119` do not appear in the active rules.
 - [ ] Confirm the game reconnects without leaving the match.
+- [ ] Confirm the replacement TCP `3724` tuple uses a different local port and is never added to the active rules.
 - [ ] Confirm the anchor is empty by approximately T+2.2 seconds.
-- [ ] Confirm a second click cannot extend the window.
+- [ ] Confirm a second click cannot replace the captured targets or extend the recovery deadline.
 
 ## Unrelated Traffic
 
@@ -56,7 +60,7 @@ sudo pfctl -a com.apple/hearthstone-puller -sr
 Observed results:
 
 - 2026-07-28, macOS 26.6 (25G72), arm64, default interface `en0`.
-- `swift test`: 54 tests executed, 0 failures, 2 explicitly gated tests skipped.
+- `swift test`: 58 tests executed, 0 failures, 2 explicitly gated tests skipped.
 - `install_helper_test.sh`: fake-root install, recovery-first bootstrap, symlink refusal, and idempotent uninstall passed.
 - `integration-test.sh --dry-run`: two loopback clients transferred continuously for five seconds with no gap over 500 ms.
 - Universal release build: app, helper, and recovery each contain `x86_64` and `arm64`.

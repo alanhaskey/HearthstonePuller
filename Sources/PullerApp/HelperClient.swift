@@ -104,9 +104,9 @@ public final class PanelStateViewModel {
     public var label: String {
         switch state {
         case .helperUnavailable: "需要安装"
-        case .absent: "未检测到炉石"
+        case .absent: "未检测到对局"
         case .ready: "一键拔线"
-        case .cutting: "断线中 0.5s"
+        case .cutting: "拔线中"
         case .waitingForReconnect: "等待重连"
         case .error: "服务异常"
         }

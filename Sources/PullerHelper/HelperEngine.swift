@@ -36,7 +36,8 @@ public struct SystemHelperTimeSource: HelperTimeSource {
 
 public actor HelperEngine {
     public static let recoveryDelay: TimeInterval = 2.0
-    public static let cuttingPollInterval = Duration.milliseconds(50)
+    public static let resetAttemptLimit = Duration.seconds(2)
+    public static let resetPollInterval = Duration.milliseconds(50)
     public static let idlePollInterval = Duration.milliseconds(500)
 
     private let locator: any HearthstoneLocating
@@ -132,15 +133,16 @@ public actor HelperEngine {
             }
 
             let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
-            guard !observed.isEmpty else {
+            let targets = HearthstoneGameConnectionSelector.select(from: observed)
+            guard !targets.isEmpty else {
                 machine.markAbsent()
                 return .rejected(
-                    code: "no_connection",
-                    message: "No Hearthstone connection found",
+                    code: "no_game_connection",
+                    message: "No Hearthstone game connection found",
                     snapshot: snapshot()
                 )
             }
-            let rules = try PFRuleRenderer.render(observed)
+            let rules = try PFRuleRenderer.render(targets)
 
             try await recovery.arm(
                 deadline: time.wallNow.addingTimeInterval(Self.recoveryDelay)
@@ -149,15 +151,14 @@ public actor HelperEngine {
             try await pf.replaceAnchor(with: rules.rules)
             try await pf.killStates(rules.statePairs)
 
-            machine.observe(connectionCount: observed.count)
+            machine.observe(connectionCount: targets.count)
             let startedAt = time.elapsed
-            try machine.beginCut(now: startedAt)
-            let initialSockets = Set(observed)
+            try machine.beginCut()
             cutTask = Task { [weak self] in
-                await self?.runCutWindow(
+                await self?.runResetAttempt(
                     process: process,
                     startedAt: startedAt,
-                    observedSockets: initialSockets
+                    capturedTargets: Set(targets)
                 )
             }
             return .accepted(snapshot())
@@ -175,42 +176,46 @@ public actor HelperEngine {
         }
     }
 
-    private func runCutWindow(
+    private func runResetAttempt(
         process: VerifiedProcess,
         startedAt: Duration,
-        observedSockets initialSockets: Set<ObservedSocket>
+        capturedTargets: Set<ObservedSocket>
     ) async {
-        let deadline = startedAt + InterruptionStateMachine.cutDuration
-        var accumulatedSockets = initialSockets
+        let deadline = startedAt + Self.resetAttemptLimit
 
         do {
             while time.elapsed < deadline {
                 let remaining = deadline - time.elapsed
-                try await time.sleep(for: min(Self.cuttingPollInterval, remaining))
+                try await time.sleep(for: min(Self.resetPollInterval, remaining))
                 guard !Task.isCancelled else { return }
 
                 guard try sockets.startIdentity(pid: process.pid) == process.startIdentity else {
                     await targetDisappeared()
                     return
                 }
-                let latest = try sockets.sockets(pid: process.pid, allowLoopback: false)
-                let merged = accumulatedSockets.union(latest)
-                if merged != accumulatedSockets {
-                    let rules = try PFRuleRenderer.render(Array(merged))
-                    try await pf.replaceAnchor(with: rules.rules)
-                    try await pf.killStates(rules.statePairs)
-                    accumulatedSockets = merged
+                let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
+                let currentTargets = Set(
+                    HearthstoneGameConnectionSelector.select(from: observed)
+                )
+                if capturedTargets.isDisjoint(with: currentTargets) {
+                    try await completeReset()
+                    return
                 }
             }
 
-            try await pf.flushAnchor()
-            machine.deadlineReached(now: time.elapsed)
-            cutTask = nil
+            await failOpen(message: "game connection reset timed out")
         } catch is CancellationError {
             return
         } catch {
-            await failOpen(message: "cut polling failed")
+            await failOpen(message: "game connection reset failed")
         }
+    }
+
+    private func completeReset() async throws {
+        try await pf.flushAnchor()
+        machine.resetCompleted()
+        cutTask = nil
+        try await recovery.flushNow()
     }
 
     private func restore() async -> HelperResponse {
@@ -260,7 +265,8 @@ public actor HelperEngine {
             else {
                 return 0
             }
-            return try sockets.sockets(pid: process.pid, allowLoopback: false).count
+            let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
+            return HearthstoneGameConnectionSelector.select(from: observed).count
         } catch {
             return 0
         }
@@ -268,19 +274,19 @@ public actor HelperEngine {
 
     private func targetDisappeared() async {
         try? await pf.flushAnchor()
-        try? await recovery.flushNow()
         cutTask = nil
         machine.markAbsent()
+        try? await recovery.flushNow()
     }
 
     private func failOpen(message: String) async {
         try? await pf.flushAnchor()
-        try? await recovery.flushNow()
         cutTask = nil
         machine.fail(message)
+        try? await recovery.flushNow()
     }
 
     private func snapshot() -> PullerSnapshot {
-        machine.snapshot(now: time.elapsed)
+        machine.snapshot()
     }
 }

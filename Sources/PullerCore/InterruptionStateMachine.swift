@@ -23,11 +23,8 @@ public enum InterruptionStateError: Error, Equatable {
 }
 
 public struct InterruptionStateMachine: Sendable {
-    public static let cutDuration = Duration.milliseconds(500)
-
     private var state: PullerState = .absent
     private var connectionCount = 0
-    private var deadline: Duration?
     private var message: String?
 
     public init() {}
@@ -48,7 +45,7 @@ public struct InterruptionStateMachine: Sendable {
         message = nil
     }
 
-    public mutating func beginCut(now: Duration) throws {
+    public mutating func beginCut() throws {
         if state == .cutting {
             throw InterruptionStateError.alreadyCutting
         }
@@ -57,58 +54,38 @@ public struct InterruptionStateMachine: Sendable {
         }
 
         state = .cutting
-        deadline = now + Self.cutDuration
         message = nil
     }
 
-    public mutating func deadlineReached(now: Duration) {
-        guard state == .cutting, let deadline, now >= deadline else { return }
+    public mutating func resetCompleted() {
+        guard state == .cutting else { return }
         state = .waitingForReconnect
-        self.deadline = nil
         connectionCount = 0
     }
 
     public mutating func restore(connectionCount: Int) {
         self.connectionCount = max(0, connectionCount)
         state = self.connectionCount > 0 ? .ready : .absent
-        deadline = nil
         message = nil
     }
 
     public mutating func markAbsent() {
         state = .absent
         connectionCount = 0
-        deadline = nil
         message = nil
     }
 
     public mutating func fail(_ message: String) {
         state = .error
-        deadline = nil
         self.message = message
     }
 
-    public func snapshot(now: Duration) -> PullerSnapshot {
-        let remaining: Int
-        if state == .cutting, let deadline {
-            remaining = Self.milliseconds(max(.zero, deadline - now))
-        } else {
-            remaining = 0
-        }
-
-        return PullerSnapshot(
+    public func snapshot() -> PullerSnapshot {
+        PullerSnapshot(
             state: state,
             connectionCount: connectionCount,
-            remainingMilliseconds: remaining,
+            remainingMilliseconds: 0,
             message: message
         )
-    }
-
-    private static func milliseconds(_ duration: Duration) -> Int {
-        let components = duration.components
-        let whole = components.seconds.multipliedReportingOverflow(by: 1_000)
-        guard !whole.overflow else { return Int.max }
-        let fractional = components.attoseconds / 1_000_000_000_000_000
-        return Int(clamping: whole.partialValue + fractional)
     }
 }

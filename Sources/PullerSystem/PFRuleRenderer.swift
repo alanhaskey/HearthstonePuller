@@ -73,13 +73,16 @@ public enum PFRuleRenderer {
     private static func ruleLines(for socket: ObservedSocket) -> [String] {
         let family = socket.family == .ipv4 ? "inet" : "inet6"
         let transport = socket.transport.rawValue
-        let port = socket.remotePort
+        let localPort = socket.localPort
+        let remotePort = socket.remotePort
 
         return [
             "block return out quick \(family) proto \(transport) "
-                + "from \(socket.localAddress) to \(socket.remoteAddress) port = \(port)",
+                + "from \(socket.localAddress) port = \(localPort) "
+                + "to \(socket.remoteAddress) port = \(remotePort)",
             "block return in quick \(family) proto \(transport) "
-                + "from \(socket.remoteAddress) port = \(port) to \(socket.localAddress)",
+                + "from \(socket.remoteAddress) port = \(remotePort) "
+                + "to \(socket.localAddress) port = \(localPort)",
         ]
     }
 
