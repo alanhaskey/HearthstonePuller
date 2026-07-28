@@ -93,11 +93,11 @@ public struct InterruptionStateMachine: Sendable {
         self.message = message
     }
 
-    public func snapshot() -> PullerSnapshot {
+    public func snapshot(remainingMilliseconds: Int = 0) -> PullerSnapshot {
         PullerSnapshot(
             state: state,
             connectionCount: connectionCount,
-            remainingMilliseconds: 0,
+            remainingMilliseconds: max(0, remainingMilliseconds),
             message: message
         )
     }

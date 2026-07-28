@@ -52,6 +52,8 @@ public actor HelperEngine {
     private var cutTask: Task<Void, Never>?
     private var observationTask: Task<Void, Never>?
     private var notTriggeredTargets: Set<ObservedSocket> = []
+    private var resetDeadline: Duration?
+    private var reconnectDeadline: Duration?
 
     public init(
         locator: any HearthstoneLocating,
@@ -97,6 +99,7 @@ public actor HelperEngine {
         cutTask = nil
         provisioningCut = false
         notTriggeredTargets.removeAll()
+        clearPhaseDeadlines()
         try? await pf.flushAnchor()
         try? await recovery.flushNow()
         await pf.releaseEnableReference()
@@ -155,13 +158,13 @@ public actor HelperEngine {
             try await pf.killStates(rules.statePairs)
 
             machine.observe(connectionCount: targets.count)
-            let startedAt = time.elapsed
+            resetDeadline = time.elapsed + Self.resetAttemptLimit
+            reconnectDeadline = nil
             try machine.beginCut()
             notTriggeredTargets.removeAll()
             cutTask = Task { [weak self] in
                 await self?.runResetAttempt(
                     process: process,
-                    startedAt: startedAt,
                     capturedTargets: Set(targets)
                 )
             }
@@ -182,10 +185,9 @@ public actor HelperEngine {
 
     private func runResetAttempt(
         process: VerifiedProcess,
-        startedAt: Duration,
         capturedTargets: Set<ObservedSocket>
     ) async {
-        let deadline = startedAt + Self.resetAttemptLimit
+        guard let deadline = resetDeadline else { return }
 
         do {
             while time.elapsed < deadline {
@@ -203,7 +205,7 @@ public actor HelperEngine {
                 )
                 if capturedTargets.isDisjoint(with: currentTargets) {
                     try await completeReset()
-                    try await runReconnectWait(process: process, startedAt: time.elapsed)
+                    try await runReconnectWait(process: process)
                     return
                 }
             }
@@ -220,6 +222,8 @@ public actor HelperEngine {
         try await pf.flushAnchor()
         try await recovery.flushNow()
         machine.resetCompleted()
+        resetDeadline = nil
+        reconnectDeadline = time.elapsed + Self.reconnectLimit
     }
 
     private func completeUntriggeredReset(
@@ -229,14 +233,12 @@ public actor HelperEngine {
         try await recovery.flushNow()
         notTriggeredTargets = capturedTargets
         machine.markNotTriggered()
+        clearPhaseDeadlines()
         cutTask = nil
     }
 
-    private func runReconnectWait(
-        process: VerifiedProcess,
-        startedAt: Duration
-    ) async throws {
-        let deadline = startedAt + Self.reconnectLimit
+    private func runReconnectWait(process: VerifiedProcess) async throws {
+        guard let deadline = reconnectDeadline else { return }
 
         while time.elapsed < deadline {
             let remaining = deadline - time.elapsed
@@ -245,18 +247,21 @@ public actor HelperEngine {
 
             guard try sockets.startIdentity(pid: process.pid) == process.startIdentity else {
                 machine.markAbsent()
+                clearPhaseDeadlines()
                 cutTask = nil
                 return
             }
             let targets = try currentGameConnections(for: process)
             if !targets.isEmpty {
                 machine.restore(connectionCount: targets.count)
+                clearPhaseDeadlines()
                 cutTask = nil
                 return
             }
         }
 
         machine.reconnectTimedOut()
+        clearPhaseDeadlines()
         cutTask = nil
     }
 
@@ -264,6 +269,7 @@ public actor HelperEngine {
         cutTask?.cancel()
         cutTask = nil
         provisioningCut = false
+        clearPhaseDeadlines()
         do {
             try await pf.flushAnchor()
             try await recovery.flushNow()
@@ -334,6 +340,7 @@ public actor HelperEngine {
             try await pf.flushAnchor()
             try await recovery.flushNow()
             notTriggeredTargets.removeAll()
+            clearPhaseDeadlines()
             cutTask = nil
             machine.markAbsent()
         } catch {
@@ -345,11 +352,44 @@ public actor HelperEngine {
         try? await pf.flushAnchor()
         cutTask = nil
         notTriggeredTargets.removeAll()
+        clearPhaseDeadlines()
         machine.fail(message)
         try? await recovery.flushNow()
     }
 
     private func snapshot() -> PullerSnapshot {
-        machine.snapshot()
+        let state = machine.snapshot().state
+        let remaining: Int
+        switch state {
+        case .cutting:
+            remaining = remainingMilliseconds(
+                until: resetDeadline,
+                limit: Self.resetAttemptLimit
+            )
+        case .waitingForReconnect:
+            remaining = remainingMilliseconds(
+                until: reconnectDeadline,
+                limit: Self.reconnectLimit
+            )
+        default:
+            remaining = 0
+        }
+        return machine.snapshot(remainingMilliseconds: remaining)
+    }
+
+    private func remainingMilliseconds(until deadline: Duration?, limit: Duration) -> Int {
+        guard let deadline else { return 0 }
+        let remaining = max(.zero, min(limit, deadline - time.elapsed))
+        let components = remaining.components
+        return max(
+            0,
+            Int(components.seconds * 1_000)
+                + Int(components.attoseconds / 1_000_000_000_000_000)
+        )
+    }
+
+    private func clearPhaseDeadlines() {
+        resetDeadline = nil
+        reconnectDeadline = nil
     }
 }

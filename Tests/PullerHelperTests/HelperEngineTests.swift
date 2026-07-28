@@ -14,7 +14,7 @@ final class HelperEngineTests: XCTestCase {
             return XCTFail("Expected accepted response, got \(response)")
         }
         XCTAssertEqual(snapshot.state, .cutting)
-        XCTAssertEqual(snapshot.remainingMilliseconds, 0)
+        XCTAssertEqual(snapshot.remainingMilliseconds, 10_000)
 
         await fixture.time.waitUntilSleepCount(1)
         fixture.time.advance(by: .milliseconds(50))
@@ -24,6 +24,7 @@ final class HelperEngineTests: XCTestCase {
             return XCTFail("Expected status response")
         }
         XCTAssertEqual(finishedSnapshot.state, .waitingForReconnect)
+        XCTAssertEqual(finishedSnapshot.remainingMilliseconds, 15_000)
 
         let events = fixture.events.values()
         assertOrder(
@@ -71,9 +72,9 @@ final class HelperEngineTests: XCTestCase {
         guard case let .rejected(code, _, secondSnapshot) = second else {
             return XCTFail("Second cut should be rejected")
         }
-        XCTAssertEqual(firstSnapshot.remainingMilliseconds, 0)
+        XCTAssertEqual(firstSnapshot.remainingMilliseconds, 10_000)
         XCTAssertEqual(code, "already_cutting")
-        XCTAssertEqual(secondSnapshot.remainingMilliseconds, 0)
+        XCTAssertEqual(secondSnapshot.remainingMilliseconds, 10_000)
         let armCount = await fixture.recovery.armCount()
         XCTAssertEqual(armCount, 1)
         await engine.shutdown()
@@ -225,6 +226,64 @@ final class HelperEngineTests: XCTestCase {
     func testResetAndReconnectLimitsAreIndependent() {
         XCTAssertEqual(HelperEngine.resetAttemptLimit, .seconds(10))
         XCTAssertEqual(HelperEngine.reconnectLimit, .seconds(15))
+    }
+
+    func testResetCountdownUsesMonotonicDeadlineAndClearsAfterTimeout() async throws {
+        let original = try HelperFixture.socket()
+        let fixture = try HelperFixture(
+            autoAdvanceTime: false,
+            observedSockets: [[original]]
+        )
+        let engine = fixture.makeEngine()
+
+        _ = await engine.handle(.cut)
+        await fixture.time.waitUntilSleepCount(1)
+        fixture.time.advance(by: .milliseconds(2_500))
+
+        guard case let .status(progress) = await engine.handle(.status) else {
+            return XCTFail("Expected status response")
+        }
+        XCTAssertEqual(progress.state, .cutting)
+        XCTAssertEqual(progress.remainingMilliseconds, 7_500)
+
+        fixture.time.advance(by: .milliseconds(7_500))
+        await fixture.events.waitFor("recovery.flushNow")
+        guard case let .status(finished) = await engine.handle(.status) else {
+            return XCTFail("Expected status response")
+        }
+        XCTAssertEqual(finished.state, .notTriggered)
+        XCTAssertEqual(finished.remainingMilliseconds, 0)
+        await engine.shutdown()
+    }
+
+    func testReconnectCountdownStartsAtFifteenSecondsAndDecreasesIndependently() async throws {
+        let fixture = try HelperFixture(autoAdvanceTime: false)
+        let engine = fixture.makeEngine()
+
+        _ = await engine.handle(.cut)
+        await fixture.time.waitUntilSleepCount(1)
+        fixture.time.advance(by: .milliseconds(50))
+        await fixture.events.waitFor("recovery.flushNow")
+        await fixture.time.waitUntilSleepCount(2)
+
+        guard case let .status(started) = await engine.handle(.status) else {
+            return XCTFail("Expected status response")
+        }
+        XCTAssertEqual(started.state, .waitingForReconnect)
+        XCTAssertEqual(started.remainingMilliseconds, 15_000)
+
+        fixture.time.advance(by: .milliseconds(1_250))
+        guard case let .status(progress) = await engine.handle(.status) else {
+            return XCTFail("Expected status response")
+        }
+        XCTAssertEqual(progress.state, .waitingForReconnect)
+        XCTAssertEqual(progress.remainingMilliseconds, 13_750)
+
+        await engine.shutdown()
+        guard case let .status(stopped) = await engine.handle(.status) else {
+            return XCTFail("Expected status response")
+        }
+        XCTAssertEqual(stopped.remainingMilliseconds, 0)
     }
 
     func testNotTriggeredCanStartFreshAttempt() async throws {
