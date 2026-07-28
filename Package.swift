@@ -7,9 +7,17 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .library(name: "PullerCore", targets: ["PullerCore"]),
+        .library(name: "PullerSystem", targets: ["PullerSystem"]),
     ],
     targets: [
         .target(name: "PullerCore"),
+        .target(
+            name: "CProcShim",
+            publicHeadersPath: "include",
+            linkerSettings: [.linkedLibrary("proc")]
+        ),
+        .target(name: "PullerSystem", dependencies: ["PullerCore", "CProcShim"]),
         .testTarget(name: "PullerCoreTests", dependencies: ["PullerCore"]),
+        .testTarget(name: "PullerSystemTests", dependencies: ["PullerSystem"]),
     ]
 )
