@@ -13,7 +13,7 @@ final class IPCMessagesTests: XCTestCase {
             PullerSnapshot(
                 state: .ready,
                 connectionCount: 2,
-                remainingMilliseconds: 0
+                remainingMilliseconds: 12_345
             )
         )
 

@@ -150,15 +150,15 @@ public actor HelperEngine {
             }
             let rules = try PFRuleRenderer.render(targets)
 
-            try await recovery.arm(
-                deadline: time.wallNow.addingTimeInterval(Self.recoveryDelay)
-            )
+            let resetStartedAt = time.elapsed
+            let recoveryDeadline = time.wallNow.addingTimeInterval(Self.recoveryDelay)
+            try await recovery.arm(deadline: recoveryDeadline)
             recoveryArmed = true
             try await pf.replaceAnchor(with: rules.rules)
             try await pf.killStates(rules.statePairs)
 
             machine.observe(connectionCount: targets.count)
-            resetDeadline = time.elapsed + Self.resetAttemptLimit
+            resetDeadline = resetStartedAt + Self.resetAttemptLimit
             reconnectDeadline = nil
             try machine.beginCut()
             notTriggeredTargets.removeAll()

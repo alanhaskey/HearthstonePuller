@@ -228,6 +228,24 @@ final class HelperEngineTests: XCTestCase {
         XCTAssertEqual(HelperEngine.reconnectLimit, .seconds(15))
     }
 
+    func testSetupTimeCountsAgainstSharedRecoveryAndResetDeadline() async throws {
+        let fixture = try HelperFixture(
+            autoAdvanceTime: false,
+            pfSetupTimeAdvance: .milliseconds(250)
+        )
+        let engine = fixture.makeEngine()
+
+        guard case let .accepted(snapshot) = await engine.handle(.cut) else {
+            return XCTFail("Expected accepted response")
+        }
+
+        XCTAssertEqual(snapshot.state, .cutting)
+        XCTAssertEqual(snapshot.remainingMilliseconds, 9_750)
+        let armedDeadline = await fixture.recovery.lastDeadline()
+        XCTAssertEqual(armedDeadline, Date(timeIntervalSince1970: 1_010))
+        await engine.shutdown()
+    }
+
     func testResetCountdownUsesMonotonicDeadlineAndClearsAfterTimeout() async throws {
         let original = try HelperFixture.socket()
         let fixture = try HelperFixture(
@@ -415,6 +433,7 @@ private final class HelperFixture: @unchecked Sendable {
         includeLocatedProcess: Bool = true,
         observedSockets: [[ObservedSocket]]? = nil,
         pfFailure: FakePF.Failure? = nil,
+        pfSetupTimeAdvance: Duration? = nil,
         recoveryArmFails: Bool = false,
         socketFailureCall: Int? = nil
     ) throws {
@@ -439,9 +458,20 @@ private final class HelperFixture: @unchecked Sendable {
             events: events,
             failureCall: socketFailureCall
         )
-        self.pf = FakePF(failure: pfFailure, events: events)
+        let fakeTime = FakeHelperTime(autoAdvance: autoAdvanceTime, events: events)
+        self.time = fakeTime
+        let advanceSetupTime: (@Sendable () -> Void)?
+        if let pfSetupTimeAdvance {
+            advanceSetupTime = { fakeTime.advance(by: pfSetupTimeAdvance) }
+        } else {
+            advanceSetupTime = nil
+        }
+        self.pf = FakePF(
+            failure: pfFailure,
+            events: events,
+            setupTimeAdvance: advanceSetupTime
+        )
         self.recovery = FakeRecovery(armFails: recoveryArmFails, events: events)
-        self.time = FakeHelperTime(autoAdvance: autoAdvanceTime, events: events)
     }
 
     func makeEngine() -> HelperEngine {
@@ -563,13 +593,19 @@ private actor FakePF: PFControlling {
 
     private let failure: Failure?
     private let events: HelperEventLog
+    private let setupTimeAdvance: (@Sendable () -> Void)?
     private var replaceCalls = 0
     private var killCalls = 0
     private var flushes = 0
 
-    init(failure: Failure?, events: HelperEventLog) {
+    init(
+        failure: Failure?,
+        events: HelperEventLog,
+        setupTimeAdvance: (@Sendable () -> Void)?
+    ) {
         self.failure = failure
         self.events = events
+        self.setupTimeAdvance = setupTimeAdvance
     }
 
     func verifyAppleAnchor() async throws { events.append("pf.verify") }
@@ -585,6 +621,7 @@ private actor FakePF: PFControlling {
         killCalls += 1
         events.append("pf.killStates")
         if failure == .killStates { throw failure! }
+        setupTimeAdvance?()
     }
 
     func flushAnchor() async throws {
