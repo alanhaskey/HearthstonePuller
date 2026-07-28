@@ -1,0 +1,104 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:heartstone_net_puller}",
+            "name": "Debug hearthstone-puller-recovery",
+            "target": "hearthstone-puller-recovery",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug hearthstone-puller-recovery"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:heartstone_net_puller}",
+            "name": "Release hearthstone-puller-recovery",
+            "target": "hearthstone-puller-recovery",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release hearthstone-puller-recovery"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:heartstone_net_puller}",
+            "name": "Debug hearthstone-puller-helper",
+            "target": "hearthstone-puller-helper",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug hearthstone-puller-helper"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:heartstone_net_puller}",
+            "name": "Release hearthstone-puller-helper",
+            "target": "hearthstone-puller-helper",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release hearthstone-puller-helper"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:heartstone_net_puller}",
+            "name": "Debug HearthstonePuller",
+            "target": "HearthstonePuller",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug HearthstonePuller"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:heartstone_net_puller}",
+            "name": "Release HearthstonePuller",
+            "target": "HearthstonePuller",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release HearthstonePuller"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:heartstone_net_puller}",
+            "name": "Debug EchoServer",
+            "target": "EchoServer",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug EchoServer"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:heartstone_net_puller}",
+            "name": "Release EchoServer",
+            "target": "EchoServer",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release EchoServer"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:heartstone_net_puller}",
+            "name": "Debug SocketClient",
+            "target": "SocketClient",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug SocketClient"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:heartstone_net_puller}",
+            "name": "Release SocketClient",
+            "target": "SocketClient",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release SocketClient"
+        }
+    ]
+}
