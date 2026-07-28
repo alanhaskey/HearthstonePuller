@@ -49,7 +49,10 @@ public struct FrameDecoder: Sendable {
             let frameLength = 4 + payloadLength
             guard buffer.count >= frameLength else { break }
 
-            payloads.append(buffer.subdata(in: 4..<frameLength))
+            let frameStart = buffer.startIndex
+            let payloadStart = buffer.index(frameStart, offsetBy: 4)
+            let frameEnd = buffer.index(frameStart, offsetBy: frameLength)
+            payloads.append(buffer.subdata(in: payloadStart..<frameEnd))
             buffer.removeFirst(frameLength)
         }
 

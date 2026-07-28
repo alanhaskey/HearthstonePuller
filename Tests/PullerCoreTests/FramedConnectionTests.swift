@@ -2,6 +2,18 @@ import XCTest
 @testable import PullerCore
 
 final class FramedConnectionTests: XCTestCase {
+    func testDecoderReadsMultipleFramesFromOneChunk() throws {
+        var decoder = FrameDecoder()
+        var frames = try FrameEncoder.encode(HelperRequest.status)
+        frames.append(try FrameEncoder.encode(HelperRequest.cut))
+
+        let payloads = try decoder.append(frames)
+
+        XCTAssertEqual(payloads.count, 2)
+        XCTAssertEqual(try JSONDecoder().decode(HelperRequest.self, from: payloads[0]), .status)
+        XCTAssertEqual(try JSONDecoder().decode(HelperRequest.self, from: payloads[1]), .cut)
+    }
+
     func testDecoderRejectsFrameLargerThan64KiB() {
         var decoder = FrameDecoder(maximumPayloadSize: 65_536)
 
