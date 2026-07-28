@@ -14,7 +14,7 @@ final class PFControllerTests: XCTestCase {
             .success(),
         ])
         let controller = PFController(runner: runner)
-        let rules = "block drop quick out inet proto tcp from any to 203.0.113.254\n"
+        let rules = "block return out quick inet proto tcp from any to 203.0.113.254\n"
         let pair = StatePair(
             family: .ipv4,
             localAddress: "192.0.2.10",
@@ -94,7 +94,7 @@ final class PFControllerTests: XCTestCase {
         try await controller.flushAnchor()
 
         do {
-            let rule = "block drop quick out inet from any to 203.0.113.254\n"
+            let rule = "block return out quick inet from any to 203.0.113.254\n"
             try await controller.replaceAnchor(with: rule)
             let result = try await runner.run(
                 executable: URL(fileURLWithPath: "/sbin/pfctl"),

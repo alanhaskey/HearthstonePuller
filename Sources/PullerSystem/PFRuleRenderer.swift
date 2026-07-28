@@ -76,9 +76,9 @@ public enum PFRuleRenderer {
         let port = socket.remotePort
 
         return [
-            "block drop out quick \(family) proto \(transport) "
+            "block return out quick \(family) proto \(transport) "
                 + "from \(socket.localAddress) to \(socket.remoteAddress) port = \(port)",
-            "block drop in quick \(family) proto \(transport) "
+            "block return in quick \(family) proto \(transport) "
                 + "from \(socket.remoteAddress) port = \(port) to \(socket.localAddress)",
         ]
     }

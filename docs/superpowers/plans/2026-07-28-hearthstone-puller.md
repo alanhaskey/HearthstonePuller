@@ -497,8 +497,8 @@ git commit -m "feat: verify the running Hearthstone process"
 For a TCP connection from `192.0.2.10` to `198.51.100.20:3724`, require:
 
 ```text
-block drop quick out inet proto tcp from 192.0.2.10 to 198.51.100.20 port = 3724
-block drop quick in inet proto tcp from 198.51.100.20 port = 3724 to 192.0.2.10
+block return out quick inet proto tcp from 192.0.2.10 to 198.51.100.20 port = 3724
+block return in quick inet proto tcp from 198.51.100.20 port = 3724 to 192.0.2.10
 ```
 
 Add equivalent `inet6` and UDP cases. Assert deduplication, stable sorting, a final newline, and rejection of unspecified/multicast endpoints.

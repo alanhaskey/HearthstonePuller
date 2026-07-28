@@ -166,7 +166,7 @@ com.apple/hearthstone-puller
 
 The default macOS PF configuration exposes the `com.apple/*` anchor point. The helper verifies this before activation. It does not edit or reload `/etc/pf.conf`, flush the root ruleset, disable PF globally, or modify another anchor.
 
-For each verified Hearthstone connection, the helper builds IPv4 or IPv6 `block drop quick` rules covering both directions. Rules constrain the remote address, protocol, and remote port. The initial local tuple may also be included for diagnostics, but the active 1.5-second rule must continue to match an immediate reconnect that uses a new local ephemeral port.
+For each verified Hearthstone connection, the helper builds IPv4 or IPv6 `block return` rules covering both directions. PF returns TCP RST or ICMP unreachable so the application socket closes instead of silently tolerating a 1.5-second packet-loss window. Rules constrain the remote address, protocol, and remote port. The initial local tuple may also be included for diagnostics, but the active 1.5-second rule must continue to match an immediate reconnect that uses a new local ephemeral port.
 
 PF state lookup can allow an already-established connection to bypass newly loaded rules. The helper therefore removes state entries between the local host and the verified remote address after installing the block rule. macOS PF cannot delete state by PID, so an unrelated application connected to the same remote address may also lose that connection. This is an explicit limitation of this architecture.
 

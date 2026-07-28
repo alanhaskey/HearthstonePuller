@@ -20,8 +20,8 @@ final class PFRuleRendererTests: XCTestCase {
         XCTAssertEqual(
             result.rules,
             """
-            block drop out quick inet proto tcp from 192.0.2.10 to 198.51.100.20 port = 3724
-            block drop in quick inet proto tcp from 198.51.100.20 port = 3724 to 192.0.2.10
+            block return out quick inet proto tcp from 192.0.2.10 to 198.51.100.20 port = 3724
+            block return in quick inet proto tcp from 198.51.100.20 port = 3724 to 192.0.2.10
 
             """
         )
@@ -46,8 +46,8 @@ final class PFRuleRendererTests: XCTestCase {
         XCTAssertEqual(
             result.rules,
             """
-            block drop out quick inet6 proto udp from 2001:db8::10 to 2001:db8::20 port = 1112
-            block drop in quick inet6 proto udp from 2001:db8::20 port = 1112 to 2001:db8::10
+            block return out quick inet6 proto udp from 2001:db8::10 to 2001:db8::20 port = 1112
+            block return in quick inet6 proto udp from 2001:db8::20 port = 1112 to 2001:db8::10
 
             """
         )
