@@ -1,6 +1,6 @@
 # HearthstonePuller for macOS
 
-个人使用的 macOS 炉石传说“拔线器”。它显示一个始终置顶的 88 × 88 悬浮按钮，点击后使用独立 PF anchor 重置当前已验证炉石进程的 TCP `3724` 对局连接。规则只匹配点击瞬间的原连接元组，重连使用的新本地端口不会被继续阻断。
+个人使用的 macOS 炉石传说“拔线器”。它显示一个始终置顶的 144 × 72 悬浮按钮，点击后使用独立 PF anchor 重置当前已验证炉石进程的 TCP `3724` 对局连接。规则只匹配点击瞬间的原连接元组，重连使用的新本地端口不会被继续阻断。
 
 ## 边界
 
@@ -29,16 +29,21 @@ build/helper/
 
 ## 安装与运行
 
-helper 只需安装一次。安装脚本读取当前控制台用户 UID，安装 recovery 后再安装 helper：
+服务只需安装一次，正确顺序是：
 
 ```bash
-sudo build/helper/install-helper.sh
 open build/HearthstonePuller.app
 ```
 
-按钮状态为“未检测到对局”时不会执行拔线。检测到已签名且位于本机 `Hearthstone.app` 内的运行进程及 TCP `3724` 连接后，按钮变为“一键拔线”。TCP `443`、TCP `1119` 和 UDP 连接不会使按钮进入可用状态。右键可重新检测、恢复网络或退出。
+1. 右键悬浮按钮并选择“安装服务”。
+2. 在 macOS 系统窗口中输入管理员密码或使用 Touch ID 授权这一次安装。
+3. 等待“服务安装成功”，然后启动或切回炉石传说。
 
-点击后，按钮显示“等待连接活动”。PF 规则只等待点击时捕获的原连接再次发包；原连接一旦消失就立即清除规则。如果原连接持续安静并在 10 秒内没有消失，按钮显示可再次点击的“未触发”，这不是服务故障。原连接成功重置后，按钮最多显示“等待重连”15 秒：检测到新的 TCP `3724` 连接就恢复为“一键拔线”，否则显示“未检测到对局”。
+安装和卸载各自只在执行时请求一次系统授权，App 本身始终以普通用户运行。安装资源完整包含在 `.app` 内，移动 App 后不依赖仓库或 `build/helper` 路径。
+
+按钮状态为“未检测到对局”时不会执行拔线。检测到已签名且位于本机 `Hearthstone.app` 内的运行进程及 TCP `3724` 连接后，按钮变为“一键拔线”。TCP `443`、TCP `1119` 和 UDP 连接不会使按钮进入可用状态。右键可重新检测、恢复网络、安装服务、卸载服务或退出。
+
+点击后，按钮分两行显示“等待连接”和 Helper 返回的剩余秒数，从 `10s` 递减。PF 规则只等待点击时捕获的原连接再次发包；原连接一旦消失就立即清除规则。如果原连接持续安静并在 10 秒内没有消失，按钮显示可再次点击的“未触发”，这不是服务故障。原连接成功重置后，按钮显示“等待重连”和最多 `15s` 的剩余时间：检测到新的 TCP `3724` 连接就恢复为“一键拔线”，否则显示“未检测到对局”。活动状态最少显示 `1s`，不会短暂闪出 `0s`。
 
 ## 紧急恢复
 
@@ -52,7 +57,9 @@ sudo pfctl -a com.apple/hearthstone-puller -F all
 
 ## 卸载
 
-先退出悬浮应用，再执行：
+右键悬浮按钮并选择“卸载服务”，完成一次 macOS 管理员授权。成功后按钮立即显示“需要安装”，再退出 App 即可。
+
+`build/helper/` 仍作为终端恢复和开发备用。无法通过 App 操作时可以执行：
 
 ```bash
 sudo build/helper/uninstall-helper.sh
@@ -76,6 +83,7 @@ macOS PF 无法按 PID 删除已有连接状态。本工具的阻断规则精确
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash Tests/Scripts/package_app_test.sh
 ```
 
 本机炉石签名观察与真实 PF 测试分别由 `HEARTHSTONE_OBSERVATION_TEST=1` 和 `PF_INTEGRATION_TEST=1` 显式开启；PF 测试还要求 root。不要在不了解测试内容时开启这些变量。

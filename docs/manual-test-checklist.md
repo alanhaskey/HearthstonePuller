@@ -5,6 +5,17 @@ macOS version:
 Mac architecture:
 Network type (Wi-Fi/Ethernet/hotspot/VPN):
 
+## App And Service Setup
+
+- [ ] Confirm Finder and the running App show the disconnect/recovery icon clearly at small size.
+- [ ] Confirm the floating panel is `144 × 72 pt`, remains above other windows, and restores a visible saved position.
+- [ ] Drag the panel and confirm hover, press, and drag feedback do not resize or shift its labels.
+- [ ] Right-click and confirm separate `安装服务` and `卸载服务` items are present with no user-visible `Helper` wording.
+- [ ] Select `安装服务`; confirm macOS requests administrator password or Touch ID once.
+- [ ] Cancel authorization once; confirm the App shows `操作已取消`, not `服务异常`.
+- [ ] Install again; confirm `服务安装成功` and status detection resumes within approximately two seconds.
+- [ ] Move the packaged App before reinstalling; confirm installation does not depend on the repository path.
+
 ## Observation Only
 
 - [ ] Record `/Applications/Hearthstone/Hearthstone.app` version.
@@ -19,13 +30,15 @@ Network type (Wi-Fi/Ethernet/hotspot/VPN):
 ## One Non-Ranked Cut
 
 - [ ] Use a non-ranked match or safe practice context.
-- [ ] Click once and confirm the UI shows `等待连接活动` without a countdown.
+- [ ] Click once and confirm the UI shows `等待连接` over `10s`, using larger centered text.
+- [ ] Confirm the reset countdown decreases to `1s` and never flashes `0s`.
 - [ ] Confirm active PF rules contain only the captured TCP `3724` tuple, including its local port.
 - [ ] Confirm TCP `443` and TCP `1119` do not appear in the active rules.
 - [ ] Confirm the game reconnects without leaving the match.
 - [ ] Confirm the replacement TCP `3724` tuple uses a different local port and is never added to the active rules.
 - [ ] Confirm the anchor is cleared immediately after the original tuple disappears.
-- [ ] Confirm the UI shows `等待重连` after the original tuple disappears.
+- [ ] Confirm the UI shows `等待重连` over `15s` after the original tuple disappears.
+- [ ] Confirm the reconnect countdown decreases to `1s` and never flashes `0s`.
 - [ ] Confirm the UI returns to `一键拔线` when the replacement tuple appears.
 - [ ] Confirm the anchor is empty by approximately T+10.5 seconds if the original tuple remains quiet.
 - [ ] Confirm a quiet attempt ends at `未触发`, not `服务异常`, and the button can be clicked again.
@@ -40,8 +53,10 @@ Network type (Wi-Fi/Ethernet/hotspot/VPN):
 
 ## Service Failure Distinction
 
-- [ ] With the helper stopped, confirm the UI reports `服务异常` or `需要安装`, never `未触发`.
-- [ ] Restart the helper and confirm normal status detection resumes.
+- [ ] With the internal helper stopped, confirm the UI reports `服务异常` or `需要安装`, never `未触发`.
+- [ ] Reinstall the service and confirm normal status detection resumes.
+- [ ] Select `卸载服务`; confirm one authorization prompt, `服务卸载成功`, and immediate `需要安装` state.
+- [ ] Confirm uninstall restores networking and flushes only `com.apple/hearthstone-puller`.
 
 ## Unrelated Traffic
 

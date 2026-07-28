@@ -8,6 +8,8 @@
     <string>HearthstonePuller</string>
     <key>CFBundleIdentifier</key>
     <string>com.yunnn.hearthstone-puller</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon.icns</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
