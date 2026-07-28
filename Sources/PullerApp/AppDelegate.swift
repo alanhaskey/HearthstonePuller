@@ -4,6 +4,10 @@ import PullerCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let viewModel = PanelStateViewModel(client: HelperClient())
+    private lazy var serviceCoordinator = ServiceOperationCoordinator(
+        manager: ServiceManager(),
+        viewModel: viewModel
+    )
     private var panelController: FloatingPanelController?
     private var pollingTask: Task<Void, Never>?
 
@@ -11,6 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panelController = FloatingPanelController()
         self.panelController = panelController
         viewModel.onChange = { [weak self] in self?.render() }
+        serviceCoordinator.onNotice = { [weak self] notice in
+            self?.show(notice)
+        }
         panelController.buttonView.onClick = { [weak self] in
             Task { await self?.viewModel.performPrimaryAction() }
         }
@@ -49,7 +56,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(item("重新检测", action: #selector(redetect)))
         menu.addItem(item("恢复网络", action: #selector(restore)))
-        menu.addItem(item("安装或卸载 Helper", action: #selector(showInstallationFiles)))
+        let install = item(
+            ServiceOperationCoordinator.installMenuTitle,
+            action: #selector(installService)
+        )
+        let uninstall = item(
+            ServiceOperationCoordinator.uninstallMenuTitle,
+            action: #selector(uninstallService)
+        )
+        install.isEnabled = !serviceCoordinator.isOperationInProgress
+        uninstall.isEnabled = !serviceCoordinator.isOperationInProgress
+        menu.addItem(install)
+        menu.addItem(uninstall)
         menu.addItem(.separator())
         menu.addItem(item("退出", action: #selector(quit)))
         return menu
@@ -69,8 +87,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await viewModel.restore() }
     }
 
-    @objc private func showInstallationFiles() {
-        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+    @objc private func installService() {
+        Task { await serviceCoordinator.perform(.install) }
+    }
+
+    @objc private func uninstallService() {
+        Task { await serviceCoordinator.perform(.uninstall) }
+    }
+
+    private func show(_ notice: ServiceOperationNotice) {
+        let alert = NSAlert()
+        alert.messageText = notice.message
+        if let informativeText = notice.informativeText {
+            alert.informativeText = informativeText
+        }
+        alert.addButton(withTitle: "好")
+        alert.runModal()
     }
 
     @objc private func quit() {

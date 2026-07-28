@@ -42,6 +42,10 @@ protocol ServiceProcessRunning: Sendable {
     func run(_ invocation: ServiceProcessInvocation) async throws -> ServiceProcessResult
 }
 
+protocol ServiceManaging: Sendable {
+    func perform(_ operation: ServiceOperation) async -> ServiceOperationResult
+}
+
 struct DefaultServiceProcessRunner: ServiceProcessRunning {
     func run(_ invocation: ServiceProcessInvocation) async throws -> ServiceProcessResult {
         try await Task.detached(priority: .userInitiated) {
@@ -241,6 +245,8 @@ actor ServiceManager {
         String(decoding: Data(text.utf8).prefix(outputLimit), as: UTF8.self)
     }
 }
+
+extension ServiceManager: ServiceManaging {}
 
 private enum ServicePackageFileType {
     case directory
