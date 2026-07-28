@@ -8,6 +8,7 @@ let package = Package(
     products: [
         .library(name: "PullerCore", targets: ["PullerCore"]),
         .library(name: "PullerSystem", targets: ["PullerSystem"]),
+        .executable(name: "hearthstone-puller-recovery", targets: ["PullerRecovery"]),
     ],
     targets: [
         .target(name: "PullerCore"),
@@ -21,7 +22,13 @@ let package = Package(
             dependencies: ["PullerCore", "CProcShim"],
             linkerSettings: [.linkedFramework("Security")]
         ),
+        .executableTarget(
+            name: "PullerRecovery",
+            dependencies: ["PullerCore", "PullerSystem"],
+            linkerSettings: [.linkedFramework("AppKit")]
+        ),
         .testTarget(name: "PullerCoreTests", dependencies: ["PullerCore"]),
         .testTarget(name: "PullerSystemTests", dependencies: ["PullerSystem"]),
+        .testTarget(name: "PullerRecoveryTests", dependencies: ["PullerRecovery"]),
     ]
 )
