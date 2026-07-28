@@ -6,7 +6,7 @@ import XCTest
 
 final class HelperEngineTests: XCTestCase {
     func testCutUsesStrictFailSafeOrderAndReachesWaitingForReconnect() async throws {
-        let fixture = try HelperFixture()
+        let fixture = try HelperFixture(autoAdvanceTime: false)
         let engine = fixture.makeEngine()
 
         let response = await engine.handle(.cut)
@@ -16,6 +16,8 @@ final class HelperEngineTests: XCTestCase {
         XCTAssertEqual(snapshot.state, .cutting)
         XCTAssertEqual(snapshot.remainingMilliseconds, 0)
 
+        await fixture.time.waitUntilSleepCount(1)
+        fixture.time.advance(by: .milliseconds(50))
         await fixture.events.waitFor("recovery.flushNow")
         let finished = await engine.handle(.status)
         guard case let .status(finishedSnapshot) = finished else {
@@ -41,7 +43,8 @@ final class HelperEngineTests: XCTestCase {
         let armCount = await fixture.recovery.armCount()
         XCTAssertEqual(armCount, 1)
         let armedDeadline = await fixture.recovery.lastDeadline()
-        XCTAssertEqual(armedDeadline, Date(timeIntervalSince1970: 1_002))
+        XCTAssertEqual(armedDeadline, Date(timeIntervalSince1970: 1_010))
+        await engine.shutdown()
     }
 
     func testStartFlushesVerifiesAndEnablesBeforeObservationLoop() async throws {
@@ -137,12 +140,18 @@ final class HelperEngineTests: XCTestCase {
             remotePort: 3_724
         )
         let fixture = try HelperFixture(
-            observedSockets: [[try HelperFixture.socket()], [replacement]]
+            autoAdvanceTime: false,
+            observedSockets: [[try HelperFixture.socket()], [], [replacement]]
         )
         let engine = fixture.makeEngine()
 
         _ = await engine.handle(.cut)
+        await fixture.time.waitUntilSleepCount(1)
+        fixture.time.advance(by: .milliseconds(50))
         await fixture.events.waitFor("recovery.flushNow")
+        await fixture.time.waitUntilSleepCount(2)
+        fixture.time.advance(by: .milliseconds(500))
+        await fixture.events.waitFor("sockets.observe", count: 3)
         let response = await engine.handle(.status)
 
         guard case let .status(snapshot) = response else {
@@ -150,9 +159,10 @@ final class HelperEngineTests: XCTestCase {
         }
         let replaceCount = await fixture.pf.replaceCount()
         let killCount = await fixture.pf.killCount()
-        XCTAssertEqual(snapshot.state, .waitingForReconnect)
+        XCTAssertEqual(snapshot.state, .ready)
         XCTAssertEqual(replaceCount, 1)
         XCTAssertEqual(killCount, 1)
+        await engine.shutdown()
     }
 
     func testRejectsCutWhenOnlyNonGameConnectionsExist() async throws {
@@ -190,10 +200,15 @@ final class HelperEngineTests: XCTestCase {
 
     func testResetTimesOutFailOpenWhenOriginalTupleRemains() async throws {
         let original = try HelperFixture.socket()
-        let fixture = try HelperFixture(observedSockets: [[original]])
+        let fixture = try HelperFixture(
+            autoAdvanceTime: false,
+            observedSockets: [[original]]
+        )
         let engine = fixture.makeEngine()
 
         _ = await engine.handle(.cut)
+        await fixture.time.waitUntilSleepCount(1)
+        fixture.time.advance(by: .seconds(10))
         await fixture.events.waitFor("recovery.flushNow")
         let response = await engine.handle(.status)
 
@@ -201,9 +216,120 @@ final class HelperEngineTests: XCTestCase {
             return XCTFail("Expected status response")
         }
         let flushCount = await fixture.pf.flushCount()
-        XCTAssertEqual(snapshot.state, .error)
-        XCTAssertEqual(snapshot.message, "game connection reset timed out")
+        XCTAssertEqual(snapshot.state, .notTriggered)
+        XCTAssertNil(snapshot.message)
         XCTAssertGreaterThanOrEqual(flushCount, 1)
+        await engine.shutdown()
+    }
+
+    func testResetAndReconnectLimitsAreIndependent() {
+        XCTAssertEqual(HelperEngine.resetAttemptLimit, .seconds(10))
+        XCTAssertEqual(HelperEngine.reconnectLimit, .seconds(15))
+    }
+
+    func testNotTriggeredCanStartFreshAttempt() async throws {
+        let original = try HelperFixture.socket()
+        let fixture = try HelperFixture(
+            autoAdvanceTime: false,
+            observedSockets: [[original]]
+        )
+        let engine = fixture.makeEngine()
+
+        _ = await engine.handle(.cut)
+        await fixture.time.waitUntilSleepCount(1)
+        fixture.time.advance(by: .seconds(10))
+        await fixture.events.waitFor("recovery.flushNow")
+
+        let retry = await engine.handle(.cut)
+
+        guard case let .accepted(snapshot) = retry else {
+            return XCTFail("Expected retry to be accepted")
+        }
+        let armCount = await fixture.recovery.armCount()
+        let replaceCount = await fixture.pf.replaceCount()
+        XCTAssertEqual(snapshot.state, .cutting)
+        XCTAssertEqual(armCount, 2)
+        XCTAssertEqual(replaceCount, 2)
+        await engine.shutdown()
+    }
+
+    func testReconnectWaitTimesOutToAbsentAfterFifteenSeconds() async throws {
+        let fixture = try HelperFixture(autoAdvanceTime: false)
+        let engine = fixture.makeEngine()
+
+        _ = await engine.handle(.cut)
+        await fixture.time.waitUntilSleepCount(1)
+        fixture.time.advance(by: .milliseconds(50))
+        await fixture.events.waitFor("recovery.flushNow")
+        await fixture.time.waitUntilSleepCount(2)
+
+        fixture.time.advance(by: .seconds(15))
+        await fixture.events.waitFor("sockets.observe", count: 3)
+        let response = await engine.handle(.status)
+
+        guard case let .status(snapshot) = response else {
+            return XCTFail("Expected status response")
+        }
+        XCTAssertEqual(snapshot.state, .absent)
+        await engine.shutdown()
+    }
+
+    func testNotTriggeredPersistsUntilTimedOutTupleIsReplaced() async throws {
+        let original = try HelperFixture.socket()
+        let replacement = try ObservedSocket(
+            family: .ipv4,
+            transport: .tcp,
+            localAddress: "192.0.2.10",
+            localPort: 50_124,
+            remoteAddress: "198.51.100.20",
+            remotePort: 3_724
+        )
+        let fixture = try HelperFixture(
+            autoAdvanceTime: false,
+            observedSockets: [[original], [original], [original], [replacement]]
+        )
+        let engine = fixture.makeEngine()
+
+        _ = await engine.handle(.cut)
+        await fixture.time.waitUntilSleepCount(1)
+        fixture.time.advance(by: .seconds(10))
+        await fixture.events.waitFor("recovery.flushNow")
+
+        try await engine.start()
+
+        guard case let .status(untriggered) = await engine.handle(.status) else {
+            return XCTFail("Expected status response")
+        }
+        XCTAssertEqual(untriggered.state, .notTriggered)
+
+        await fixture.time.waitUntilSleepCount(2)
+        fixture.time.advance(by: .milliseconds(500))
+        await fixture.events.waitFor("sockets.observe", count: 4)
+
+        guard case let .status(replaced) = await engine.handle(.status) else {
+            return XCTFail("Expected status response")
+        }
+        XCTAssertEqual(replaced.state, .ready)
+        await engine.shutdown()
+    }
+
+    func testObservationFailureReportsServiceError() async throws {
+        let fixture = try HelperFixture(
+            autoAdvanceTime: false,
+            socketFailureCall: 2
+        )
+        let engine = fixture.makeEngine()
+        try await engine.start()
+
+        await fixture.time.waitUntilSleepCount(1)
+        fixture.time.advance(by: .milliseconds(500))
+        await fixture.events.waitFor("sockets.failure")
+
+        guard case let .status(snapshot) = await engine.handle(.status) else {
+            return XCTFail("Expected status response")
+        }
+        XCTAssertEqual(snapshot.state, .error)
+        await engine.shutdown()
     }
 }
 
@@ -230,7 +356,8 @@ private final class HelperFixture: @unchecked Sendable {
         includeLocatedProcess: Bool = true,
         observedSockets: [[ObservedSocket]]? = nil,
         pfFailure: FakePF.Failure? = nil,
-        recoveryArmFails: Bool = false
+        recoveryArmFails: Bool = false,
+        socketFailureCall: Int? = nil
     ) throws {
         let process = VerifiedProcess(
             pid: 42,
@@ -250,7 +377,8 @@ private final class HelperFixture: @unchecked Sendable {
         self.sockets = FakeSockets(
             identity: process.startIdentity,
             observations: socketObservations,
-            events: events
+            events: events,
+            failureCall: socketFailureCall
         )
         self.pf = FakePF(failure: pfFailure, events: events)
         self.recovery = FakeRecovery(armFails: recoveryArmFails, events: events)
@@ -282,12 +410,15 @@ private final class HelperFixture: @unchecked Sendable {
 private final class HelperEventLog: @unchecked Sendable {
     private let lock = NSLock()
     private var events: [String] = []
-    private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+    private var waiters: [String: [(count: Int, continuation: CheckedContinuation<Void, Never>)]] = [:]
 
     func append(_ event: String) {
         let continuations = lock.withLock {
             events.append(event)
-            return waiters.removeValue(forKey: event) ?? []
+            let eventCount = events.count { $0 == event }
+            let ready = waiters[event, default: []].filter { $0.count <= eventCount }
+            waiters[event]?.removeAll { $0.count <= eventCount }
+            return ready.map(\.continuation)
         }
         continuations.forEach { $0.resume() }
     }
@@ -296,11 +427,11 @@ private final class HelperEventLog: @unchecked Sendable {
         lock.withLock { events }
     }
 
-    func waitFor(_ event: String) async {
+    func waitFor(_ event: String, count: Int = 1) async {
         await withCheckedContinuation { continuation in
             let shouldResume = lock.withLock {
-                if events.contains(event) { return true }
-                waiters[event, default: []].append(continuation)
+                if events.count(where: { $0 == event }) >= count { return true }
+                waiters[event, default: []].append((count, continuation))
                 return false
             }
             if shouldResume { continuation.resume() }
@@ -323,11 +454,19 @@ private final class FakeSockets: ProcessSocketObserving, @unchecked Sendable {
     private let identity: ProcessStartIdentity
     private var observations: [[ObservedSocket]]
     private let events: HelperEventLog
+    private let failureCall: Int?
+    private var observationCalls = 0
 
-    init(identity: ProcessStartIdentity, observations: [[ObservedSocket]], events: HelperEventLog) {
+    init(
+        identity: ProcessStartIdentity,
+        observations: [[ObservedSocket]],
+        events: HelperEventLog,
+        failureCall: Int?
+    ) {
         self.identity = identity
         self.observations = observations
         self.events = events
+        self.failureCall = failureCall
     }
 
     func processIDs() throws -> [pid_t] { [] }
@@ -340,11 +479,20 @@ private final class FakeSockets: ProcessSocketObserving, @unchecked Sendable {
 
     func sockets(pid: pid_t, allowLoopback: Bool) throws -> [ObservedSocket] {
         events.append("sockets.observe")
-        return lock.withLock {
+        return try lock.withLock {
+            observationCalls += 1
+            if observationCalls == failureCall {
+                events.append("sockets.failure")
+                throw FakeSocketError.observationFailed
+            }
             guard observations.count > 1 else { return observations[0] }
             return observations.removeFirst()
         }
     }
+}
+
+private enum FakeSocketError: Error {
+    case observationFailed
 }
 
 private actor FakePF: PFControlling {
@@ -431,6 +579,9 @@ private final class FakeHelperTime: HelperTimeSource, @unchecked Sendable {
     private let baseWall = Date(timeIntervalSince1970: 1_000)
     private let events: HelperEventLog
     private var currentElapsed: Duration = .zero
+    private var sleepers: [UUID: Sleeper] = [:]
+    private var sleepCount = 0
+    private var sleepWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
     init(autoAdvance: Bool, events: HelperEventLog) {
         self.autoAdvance = autoAdvance
@@ -449,12 +600,61 @@ private final class FakeHelperTime: HelperTimeSource, @unchecked Sendable {
     }
 
     func sleep(for duration: Duration) async throws {
-        events.append("time.sleep")
         if autoAdvance {
             lock.withLock { currentElapsed += duration }
+            events.append("time.sleep")
         } else {
-            try await Task.sleep(for: .seconds(60))
+            let id = UUID()
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    let readyWaiters = lock.withLock {
+                        sleepers[id] = Sleeper(
+                            deadline: currentElapsed + duration,
+                            continuation: continuation
+                        )
+                        sleepCount += 1
+                        let ready = sleepWaiters.filter { $0.count <= sleepCount }
+                        sleepWaiters.removeAll { $0.count <= sleepCount }
+                        return ready.map(\.continuation)
+                    }
+                    events.append("time.sleep")
+                    readyWaiters.forEach { $0.resume() }
+                }
+            } onCancel: {
+                self.cancelSleeper(id)
+            }
         }
         await Task.yield()
+    }
+
+    func waitUntilSleepCount(_ count: Int) async {
+        await withCheckedContinuation { continuation in
+            let shouldResume = lock.withLock {
+                if sleepCount >= count { return true }
+                sleepWaiters.append((count, continuation))
+                return false
+            }
+            if shouldResume { continuation.resume() }
+        }
+    }
+
+    func advance(by duration: Duration) {
+        let due = lock.withLock {
+            currentElapsed += duration
+            let ready = sleepers.filter { $0.value.deadline <= currentElapsed }
+            ready.keys.forEach { sleepers[$0] = nil }
+            return ready.map(\.value.continuation)
+        }
+        due.forEach { $0.resume() }
+    }
+
+    private func cancelSleeper(_ id: UUID) {
+        let continuation = lock.withLock { sleepers.removeValue(forKey: id)?.continuation }
+        continuation?.resume(throwing: CancellationError())
+    }
+
+    private struct Sleeper {
+        let deadline: Duration
+        let continuation: CheckedContinuation<Void, Error>
     }
 }

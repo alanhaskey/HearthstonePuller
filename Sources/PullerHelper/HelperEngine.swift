@@ -35,8 +35,9 @@ public struct SystemHelperTimeSource: HelperTimeSource {
 }
 
 public actor HelperEngine {
-    public static let recoveryDelay: TimeInterval = 2.0
-    public static let resetAttemptLimit = Duration.seconds(2)
+    public static let recoveryDelay: TimeInterval = 10.0
+    public static let resetAttemptLimit = Duration.seconds(10)
+    public static let reconnectLimit = Duration.seconds(15)
     public static let resetPollInterval = Duration.milliseconds(50)
     public static let idlePollInterval = Duration.milliseconds(500)
 
@@ -50,6 +51,7 @@ public actor HelperEngine {
     private var provisioningCut = false
     private var cutTask: Task<Void, Never>?
     private var observationTask: Task<Void, Never>?
+    private var notTriggeredTargets: Set<ObservedSocket> = []
 
     public init(
         locator: any HearthstoneLocating,
@@ -94,6 +96,7 @@ public actor HelperEngine {
         cutTask?.cancel()
         cutTask = nil
         provisioningCut = false
+        notTriggeredTargets.removeAll()
         try? await pf.flushAnchor()
         try? await recovery.flushNow()
         await pf.releaseEnableReference()
@@ -154,6 +157,7 @@ public actor HelperEngine {
             machine.observe(connectionCount: targets.count)
             let startedAt = time.elapsed
             try machine.beginCut()
+            notTriggeredTargets.removeAll()
             cutTask = Task { [weak self] in
                 await self?.runResetAttempt(
                     process: process,
@@ -199,11 +203,12 @@ public actor HelperEngine {
                 )
                 if capturedTargets.isDisjoint(with: currentTargets) {
                     try await completeReset()
+                    try await runReconnectWait(process: process, startedAt: time.elapsed)
                     return
                 }
             }
 
-            await failOpen(message: "game connection reset timed out")
+            try await completeUntriggeredReset(capturedTargets: capturedTargets)
         } catch is CancellationError {
             return
         } catch {
@@ -213,9 +218,46 @@ public actor HelperEngine {
 
     private func completeReset() async throws {
         try await pf.flushAnchor()
-        machine.resetCompleted()
-        cutTask = nil
         try await recovery.flushNow()
+        machine.resetCompleted()
+    }
+
+    private func completeUntriggeredReset(
+        capturedTargets: Set<ObservedSocket>
+    ) async throws {
+        try await pf.flushAnchor()
+        try await recovery.flushNow()
+        notTriggeredTargets = capturedTargets
+        machine.markNotTriggered()
+        cutTask = nil
+    }
+
+    private func runReconnectWait(
+        process: VerifiedProcess,
+        startedAt: Duration
+    ) async throws {
+        let deadline = startedAt + Self.reconnectLimit
+
+        while time.elapsed < deadline {
+            let remaining = deadline - time.elapsed
+            try await time.sleep(for: min(Self.idlePollInterval, remaining))
+            guard !Task.isCancelled else { return }
+
+            guard try sockets.startIdentity(pid: process.pid) == process.startIdentity else {
+                machine.markAbsent()
+                cutTask = nil
+                return
+            }
+            let targets = try currentGameConnections(for: process)
+            if !targets.isEmpty {
+                machine.restore(connectionCount: targets.count)
+                cutTask = nil
+                return
+            }
+        }
+
+        machine.reconnectTimedOut()
+        cutTask = nil
     }
 
     private func restore() async -> HelperResponse {
@@ -225,7 +267,8 @@ public actor HelperEngine {
         do {
             try await pf.flushAnchor()
             try await recovery.flushNow()
-            let count = currentConnectionCount()
+            notTriggeredTargets.removeAll()
+            let count = try currentGameConnections().count
             machine.restore(connectionCount: count)
             return .accepted(snapshot())
         } catch {
@@ -243,7 +286,8 @@ public actor HelperEngine {
             do {
                 try await time.sleep(for: Self.idlePollInterval)
                 guard !Task.isCancelled else { return }
-                if snapshot().state != .cutting, !provisioningCut {
+                if ![.cutting, .waitingForReconnect].contains(snapshot().state),
+                   !provisioningCut {
                     refreshObservedStatus()
                 }
             } catch is CancellationError {
@@ -255,33 +299,52 @@ public actor HelperEngine {
     }
 
     private func refreshObservedStatus() {
-        machine.observe(connectionCount: currentConnectionCount())
-    }
-
-    private func currentConnectionCount() -> Int {
         do {
-            guard let process = try locator.locate(),
-                  try sockets.startIdentity(pid: process.pid) == process.startIdentity
-            else {
-                return 0
+            let targets = Set(try currentGameConnections())
+            if snapshot().state == .notTriggered {
+                guard notTriggeredTargets.isDisjoint(with: targets) else { return }
+                notTriggeredTargets.removeAll()
+                machine.restore(connectionCount: targets.count)
+                return
             }
-            let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
-            return HearthstoneGameConnectionSelector.select(from: observed).count
+            machine.observe(connectionCount: targets.count)
         } catch {
-            return 0
+            machine.fail("status observation failed")
         }
     }
 
+    private func currentGameConnections() throws -> [ObservedSocket] {
+        guard let process = try locator.locate(),
+              try sockets.startIdentity(pid: process.pid) == process.startIdentity
+        else {
+            return []
+        }
+        return try currentGameConnections(for: process)
+    }
+
+    private func currentGameConnections(
+        for process: VerifiedProcess
+    ) throws -> [ObservedSocket] {
+        let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
+        return HearthstoneGameConnectionSelector.select(from: observed)
+    }
+
     private func targetDisappeared() async {
-        try? await pf.flushAnchor()
-        cutTask = nil
-        machine.markAbsent()
-        try? await recovery.flushNow()
+        do {
+            try await pf.flushAnchor()
+            try await recovery.flushNow()
+            notTriggeredTargets.removeAll()
+            cutTask = nil
+            machine.markAbsent()
+        } catch {
+            await failOpen(message: "reset cleanup failed")
+        }
     }
 
     private func failOpen(message: String) async {
         try? await pf.flushAnchor()
         cutTask = nil
+        notTriggeredTargets.removeAll()
         machine.fail(message)
         try? await recovery.flushNow()
     }
