@@ -11,6 +11,8 @@ let package = Package(
         .executable(name: "hearthstone-puller-recovery", targets: ["PullerRecovery"]),
         .executable(name: "hearthstone-puller-helper", targets: ["PullerHelper"]),
         .executable(name: "HearthstonePuller", targets: ["PullerApp"]),
+        .executable(name: "EchoServer", targets: ["EchoServer"]),
+        .executable(name: "SocketClient", targets: ["SocketClient"]),
     ],
     targets: [
         .target(name: "PullerCore"),
@@ -38,6 +40,8 @@ let package = Package(
             dependencies: ["PullerCore"],
             linkerSettings: [.linkedFramework("AppKit")]
         ),
+        .executableTarget(name: "EchoServer", path: "Fixtures/EchoServer"),
+        .executableTarget(name: "SocketClient", path: "Fixtures/SocketClient"),
         .testTarget(name: "PullerCoreTests", dependencies: ["PullerCore"]),
         .testTarget(name: "PullerSystemTests", dependencies: ["PullerSystem"]),
         .testTarget(name: "PullerRecoveryTests", dependencies: ["PullerRecovery"]),
