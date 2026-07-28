@@ -99,16 +99,28 @@ final class RecoveryEngineTests: XCTestCase {
         XCTAssertNil(status)
     }
 
-    func testClampsRecoveryWindowToPointOneThroughTwoPointFiveSeconds() async throws {
+    func testAcceptsTenSecondHelperDeadline() async throws {
+        let engine = RecoveryEngine(
+            pf: FakePFController(),
+            time: ManualRecoveryTimeSource(wallNow: epoch)
+        )
+        let requested = epoch.addingTimeInterval(10)
+
+        let accepted = try await engine.arm(deadline: requested)
+
+        XCTAssertEqual(accepted, requested)
+    }
+
+    func testClampsRecoveryWindowToPointOneThroughTenPointFiveSeconds() async throws {
         let time = ManualRecoveryTimeSource(wallNow: epoch)
         let early = RecoveryEngine(pf: FakePFController(), time: time)
         let late = RecoveryEngine(pf: FakePFController(), time: time)
 
         let earliest = try await early.arm(deadline: epoch.addingTimeInterval(-10))
-        let latest = try await late.arm(deadline: epoch.addingTimeInterval(10))
+        let latest = try await late.arm(deadline: epoch.addingTimeInterval(20))
 
         XCTAssertEqual(earliest.timeIntervalSince(epoch), 0.1, accuracy: 0.001)
-        XCTAssertEqual(latest.timeIntervalSince(epoch), 2.5, accuracy: 0.001)
+        XCTAssertEqual(latest.timeIntervalSince(epoch), 10.5, accuracy: 0.001)
     }
 }
 

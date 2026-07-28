@@ -38,7 +38,7 @@ public struct SystemRecoveryTimeSource: RecoveryTimeSource {
 
 public actor RecoveryEngine {
     public static let minimumDelay: TimeInterval = 0.1
-    public static let maximumDelay: TimeInterval = 2.5
+    public static let maximumDelay: TimeInterval = 10.5
 
     private let pf: any PFControlling
     private let time: any RecoveryTimeSource
