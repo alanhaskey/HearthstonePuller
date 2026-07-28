@@ -1,0 +1,9 @@
+/Tests/
+/docs/
+/.build/
+/build/
+/.swiftpm/
+/.vscode/
+*.xcuserstate
+.DS_Store
+/.superpowers/
