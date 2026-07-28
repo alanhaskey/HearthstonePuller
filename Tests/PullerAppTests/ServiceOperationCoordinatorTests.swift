@@ -89,6 +89,24 @@ final class ServiceOperationCoordinatorTests: XCTestCase {
         await task.value
         XCTAssertFalse(coordinator.isOperationInProgress)
     }
+
+    func testInstallPollingStopsWhenTwoSecondDeadlineIsReached() async {
+        let time = ManualElapsedTime()
+        let client = SlowUnavailableHelperClient(time: time)
+        let coordinator = ServiceOperationCoordinator(
+            manager: ImmediateServiceManager(result: .succeeded(.install)),
+            viewModel: PanelStateViewModel(client: client),
+            elapsed: { time.elapsed },
+            sleep: { duration in time.advance(by: duration) }
+        )
+
+        await coordinator.perform(.install)
+
+        let requests = await client.requestCount()
+        XCTAssertEqual(requests, 2)
+        XCTAssertGreaterThanOrEqual(time.elapsed, .seconds(2))
+        XCTAssertLessThan(time.elapsed, .seconds(3))
+    }
 }
 
 private func snapshot(_ state: PullerState) -> PullerSnapshot {
@@ -156,4 +174,32 @@ private actor SleepRecorder {
 
     func record(_ duration: Duration) { durations.append(duration) }
     func values() -> [Duration] { durations }
+}
+
+private actor SlowUnavailableHelperClient: HelperRequestSending {
+    private let time: ManualElapsedTime
+    private var count = 0
+
+    init(time: ManualElapsedTime) {
+        self.time = time
+    }
+
+    func send(_ request: HelperRequest) async throws -> HelperResponse {
+        count += 1
+        time.advance(by: .seconds(1))
+        return .status(snapshot(.helperUnavailable))
+    }
+
+    func requestCount() -> Int { count }
+}
+
+private final class ManualElapsedTime: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Duration = .zero
+
+    var elapsed: Duration { lock.withLock { value } }
+
+    func advance(by duration: Duration) {
+        lock.withLock { value += duration }
+    }
 }

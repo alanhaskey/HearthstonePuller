@@ -21,17 +21,22 @@ final class ServiceOperationCoordinator {
 
     private let manager: any ServiceManaging
     private let viewModel: PanelStateViewModel
+    private let elapsed: @Sendable () -> Duration
     private let sleep: @Sendable (Duration) async -> Void
 
     init(
         manager: any ServiceManaging,
         viewModel: PanelStateViewModel,
+        elapsed: @escaping @Sendable () -> Duration = {
+            ServiceOperationClock.elapsed
+        },
         sleep: @escaping @Sendable (Duration) async -> Void = {
             try? await Task.sleep(for: $0)
         }
     ) {
         self.manager = manager
         self.viewModel = viewModel
+        self.elapsed = elapsed
         self.sleep = sleep
     }
 
@@ -66,10 +71,13 @@ final class ServiceOperationCoordinator {
     }
 
     private func waitForInstalledService() async {
-        for attempt in 0..<20 {
+        let deadline = elapsed() + .seconds(2)
+        while elapsed() < deadline {
             await viewModel.refresh()
             if viewModel.state != .helperUnavailable { return }
-            if attempt < 19 { await sleep(.milliseconds(100)) }
+            let remaining = deadline - elapsed()
+            guard remaining > .zero else { return }
+            await sleep(min(.milliseconds(100), remaining))
         }
     }
 
@@ -80,5 +88,14 @@ final class ServiceOperationCoordinator {
              let .scriptFailed(message):
             message.isEmpty ? nil : message
         }
+    }
+}
+
+private enum ServiceOperationClock {
+    static let clock = ContinuousClock()
+    static let origin = clock.now
+
+    static var elapsed: Duration {
+        origin.duration(to: clock.now)
     }
 }
