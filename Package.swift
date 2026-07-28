@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "PullerSystem", targets: ["PullerSystem"]),
         .executable(name: "hearthstone-puller-recovery", targets: ["PullerRecovery"]),
         .executable(name: "hearthstone-puller-helper", targets: ["PullerHelper"]),
+        .executable(name: "HearthstonePuller", targets: ["PullerApp"]),
     ],
     targets: [
         .target(name: "PullerCore"),
@@ -32,9 +33,15 @@ let package = Package(
             name: "PullerHelper",
             dependencies: ["PullerCore", "PullerSystem"]
         ),
+        .executableTarget(
+            name: "PullerApp",
+            dependencies: ["PullerCore"],
+            linkerSettings: [.linkedFramework("AppKit")]
+        ),
         .testTarget(name: "PullerCoreTests", dependencies: ["PullerCore"]),
         .testTarget(name: "PullerSystemTests", dependencies: ["PullerSystem"]),
         .testTarget(name: "PullerRecoveryTests", dependencies: ["PullerRecovery"]),
         .testTarget(name: "PullerHelperTests", dependencies: ["PullerHelper"]),
+        .testTarget(name: "PullerAppTests", dependencies: ["PullerApp"]),
     ]
 )
