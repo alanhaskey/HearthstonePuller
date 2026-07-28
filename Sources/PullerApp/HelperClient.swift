@@ -101,16 +101,29 @@ public final class PanelStateViewModel {
 
     public var state: PullerState { snapshot.state }
 
-    public var label: String {
+    public var title: String {
         switch state {
         case .helperUnavailable: "需要安装"
         case .absent: "未检测到对局"
         case .ready: "一键拔线"
-        case .cutting: "等待连接活动"
+        case .cutting: "等待连接"
         case .notTriggered: "未触发"
         case .waitingForReconnect: "等待重连"
         case .error: "服务异常"
         }
+    }
+
+    public var label: String { title }
+
+    public var countdown: String? {
+        guard state == .cutting || state == .waitingForReconnect else { return nil }
+        let seconds = max(1, (snapshot.remainingMilliseconds + 999) / 1_000)
+        return "\(seconds)s"
+    }
+
+    public var accessibilityText: String {
+        guard let countdown else { return title }
+        return "\(title) \(countdown)"
     }
 
     public var isEnabled: Bool {

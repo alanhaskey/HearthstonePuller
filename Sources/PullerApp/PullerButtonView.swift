@@ -3,34 +3,56 @@ import PullerCore
 
 @MainActor
 final class PullerButtonView: NSView {
+    static let titleFontSize: CGFloat = 18
+    static let countdownFontSize: CGFloat = 20
+    static let cornerRadius: CGFloat = 10
+
     var onClick: (() -> Void)?
     var onDrag: ((NSPoint) -> Void)?
     var menuProvider: (() -> NSMenu)?
 
-    private let label = NSTextField(labelWithString: "需要安装")
+    private let titleLabel = NSTextField(labelWithString: "需要安装")
+    private let countdownLabel = NSTextField(labelWithString: "")
     private var mouseDownLocation: NSPoint?
     private var lastDragLocation: NSPoint?
     private var isDragging = false
+    private var isHovered = false
+    private var isPressed = false
+    private var renderedState: PullerState = .helperUnavailable
+    private var renderedEnabled = true
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.cornerRadius = 8
+        layer?.cornerRadius = Self.cornerRadius
         layer?.borderWidth = 1
         layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
 
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.alignment = .center
-        label.maximumNumberOfLines = 2
-        label.lineBreakMode = .byWordWrapping
-        label.font = .systemFont(ofSize: 13, weight: .semibold)
-        label.textColor = .white
-        addSubview(label)
+        configure(
+            titleLabel,
+            font: .systemFont(ofSize: Self.titleFontSize, weight: .semibold)
+        )
+        configure(
+            countdownLabel,
+            font: .monospacedDigitSystemFont(ofSize: Self.countdownFontSize, weight: .bold)
+        )
+        countdownLabel.isHidden = true
+
+        let stack = NSStackView(views: [titleLabel, countdownLabel])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.distribution = .gravityAreas
+        stack.spacing = 0
+        addSubview(stack)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 7),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -7),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 7),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -7),
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+
+        setAccessibilityRole(.button)
     }
 
     required init?(coder: NSCoder) {
@@ -38,13 +60,18 @@ final class PullerButtonView: NSView {
     }
 
     func render(_ viewModel: PanelStateViewModel) {
-        label.stringValue = viewModel.label
-        alphaValue = viewModel.isEnabled ? 1 : 0.78
-        layer?.backgroundColor = color(for: viewModel.state).cgColor
-        setAccessibilityLabel(viewModel.label)
+        renderedState = viewModel.state
+        renderedEnabled = viewModel.isEnabled
+        titleLabel.stringValue = viewModel.title
+        countdownLabel.stringValue = viewModel.countdown ?? ""
+        countdownLabel.isHidden = viewModel.countdown == nil
+        setAccessibilityLabel(viewModel.accessibilityText)
+        updateAppearance()
     }
 
     override func mouseDown(with event: NSEvent) {
+        isPressed = true
+        updateAppearance()
         mouseDownLocation = NSEvent.mouseLocation
         lastDragLocation = mouseDownLocation
         isDragging = false
@@ -64,6 +91,8 @@ final class PullerButtonView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         defer {
+            isPressed = false
+            updateAppearance()
             mouseDownLocation = nil
             lastDragLocation = nil
             isDragging = false
@@ -71,9 +100,48 @@ final class PullerButtonView: NSView {
         if !isDragging { onClick?() }
     }
 
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        updateAppearance()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        isPressed = false
+        updateAppearance()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseEnteredAndExited],
+            owner: self
+        ))
+    }
+
     override func rightMouseDown(with event: NSEvent) {
         guard let menu = menuProvider?() else { return }
         NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
+    private func configure(_ label: NSTextField, font: NSFont) {
+        label.alignment = .center
+        label.maximumNumberOfLines = 1
+        label.lineBreakMode = .byClipping
+        label.font = font
+        label.textColor = .white
+    }
+
+    private func updateAppearance() {
+        layer?.backgroundColor = color(for: renderedState).cgColor
+        switch (renderedEnabled, isPressed, isHovered) {
+        case (false, _, _): alphaValue = 0.78
+        case (true, true, _): alphaValue = 0.82
+        case (true, false, true): alphaValue = 0.94
+        case (true, false, false): alphaValue = 1
+        }
     }
 
     private func color(for state: PullerState) -> NSColor {

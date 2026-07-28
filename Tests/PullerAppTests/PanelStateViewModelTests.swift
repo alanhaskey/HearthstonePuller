@@ -9,7 +9,7 @@ final class PanelStateViewModelTests: XCTestCase {
             (.helperUnavailable, "需要安装", true),
             (.absent, "未检测到对局", false),
             (.ready, "一键拔线", true),
-            (.cutting, "等待连接活动", false),
+            (.cutting, "等待连接", false),
             (.notTriggered, "未触发", true),
             (.waitingForReconnect, "等待重连", false),
             (.error, "服务异常", true),
@@ -18,9 +18,48 @@ final class PanelStateViewModelTests: XCTestCase {
         let viewModel = PanelStateViewModel(client: FakeHelperClient())
         for (state, label, enabled) in cases {
             viewModel.apply(snapshot(state: state))
-            XCTAssertEqual(viewModel.label, label)
+            XCTAssertEqual(viewModel.title, label)
             XCTAssertEqual(viewModel.isEnabled, enabled)
         }
+    }
+
+    func testTimedStatesFormatAuthoritativeMillisecondsWithCeilingDivision() {
+        let viewModel = PanelStateViewModel(client: FakeHelperClient())
+
+        viewModel.apply(snapshot(state: .cutting, remainingMilliseconds: 8_001))
+        XCTAssertEqual(viewModel.title, "等待连接")
+        XCTAssertEqual(viewModel.countdown, "9s")
+        XCTAssertEqual(viewModel.accessibilityText, "等待连接 9s")
+
+        viewModel.apply(snapshot(state: .waitingForReconnect, remainingMilliseconds: 14_000))
+        XCTAssertEqual(viewModel.title, "等待重连")
+        XCTAssertEqual(viewModel.countdown, "14s")
+        XCTAssertEqual(viewModel.accessibilityText, "等待重连 14s")
+    }
+
+    func testTimedStatesNeverDisplayZeroSeconds() {
+        let viewModel = PanelStateViewModel(client: FakeHelperClient())
+
+        for milliseconds in [0, 1, 999, 1_000] {
+            viewModel.apply(snapshot(state: .cutting, remainingMilliseconds: milliseconds))
+            XCTAssertEqual(viewModel.countdown, "1s")
+        }
+    }
+
+    func testNormalStatesDoNotExposeCountdownText() {
+        let viewModel = PanelStateViewModel(client: FakeHelperClient())
+
+        viewModel.apply(snapshot(state: .ready, remainingMilliseconds: 9_999))
+
+        XCTAssertNil(viewModel.countdown)
+        XCTAssertEqual(viewModel.accessibilityText, "一键拔线")
+    }
+
+    func testPanelGeometryAndTypographyConstants() {
+        XCTAssertEqual(FloatingPanelController.panelSize, NSSize(width: 144, height: 72))
+        XCTAssertEqual(PullerButtonView.titleFontSize, 18)
+        XCTAssertEqual(PullerButtonView.countdownFontSize, 20)
+        XCTAssertEqual(PullerButtonView.cornerRadius, 10)
     }
 
     func testReadyClickSendsOneCutAndCuttingIgnoresAdditionalClicks() async {
@@ -73,11 +112,14 @@ final class PanelStateViewModelTests: XCTestCase {
 }
 
 @MainActor
-private func snapshot(state: PullerState) -> PullerSnapshot {
+private func snapshot(
+    state: PullerState,
+    remainingMilliseconds: Int = 0
+) -> PullerSnapshot {
     PullerSnapshot(
         state: state,
         connectionCount: state == .absent ? 0 : 1,
-        remainingMilliseconds: 0
+        remainingMilliseconds: remainingMilliseconds
     )
 }
 

@@ -2,7 +2,7 @@ import AppKit
 
 @MainActor
 final class FloatingPanelController {
-    static let panelSize = NSSize(width: 88, height: 88)
+    static let panelSize = NSSize(width: 144, height: 72)
     private static let originXKey = "floatingPanelOriginX"
     private static let originYKey = "floatingPanelOriginY"
 
