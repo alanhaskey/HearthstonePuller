@@ -46,6 +46,7 @@ public actor HelperEngine {
     private let pf: any PFControlling
     private let recovery: any RecoveryArming
     private let time: any HelperTimeSource
+    private let gameEndpointProvider: any HearthstoneGameEndpointProviding
 
     private var machine = InterruptionStateMachine()
     private var provisioningCut = false
@@ -60,13 +61,15 @@ public actor HelperEngine {
         sockets: any ProcessSocketObserving,
         pf: any PFControlling,
         recovery: any RecoveryArming,
-        time: any HelperTimeSource = SystemHelperTimeSource()
+        time: any HelperTimeSource = SystemHelperTimeSource(),
+        gameEndpointProvider: any HearthstoneGameEndpointProviding = HearthstoneGameLogEndpointProvider()
     ) {
         self.locator = locator
         self.sockets = sockets
         self.pf = pf
         self.recovery = recovery
         self.time = time
+        self.gameEndpointProvider = gameEndpointProvider
     }
 
     public func start() async throws {
@@ -139,7 +142,7 @@ public actor HelperEngine {
             }
 
             let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
-            let targets = HearthstoneGameConnectionSelector.select(from: observed)
+            let targets = selectGameConnections(from: observed)
             guard !targets.isEmpty else {
                 machine.markAbsent()
                 return .rejected(
@@ -200,9 +203,7 @@ public actor HelperEngine {
                     return
                 }
                 let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
-                let currentTargets = Set(
-                    HearthstoneGameConnectionSelector.select(from: observed)
-                )
+                let currentTargets = Set(selectGameConnections(from: observed))
                 if capturedTargets.isDisjoint(with: currentTargets) {
                     try await completeReset()
                     try await runReconnectWait(process: process)
@@ -332,7 +333,14 @@ public actor HelperEngine {
         for process: VerifiedProcess
     ) throws -> [ObservedSocket] {
         let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
-        return HearthstoneGameConnectionSelector.select(from: observed)
+        return selectGameConnections(from: observed)
+    }
+
+    private func selectGameConnections(from observed: [ObservedSocket]) -> [ObservedSocket] {
+        HearthstoneGameConnectionSelector.select(
+            from: observed,
+            activeEndpoint: gameEndpointProvider.activeEndpoint()
+        )
     }
 
     private func targetDisappeared() async {

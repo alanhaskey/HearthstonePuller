@@ -2,14 +2,27 @@ import Foundation
 import PullerCore
 
 public enum HearthstoneGameConnectionSelector {
-    public static func select(from sockets: [ObservedSocket]) -> [ObservedSocket] {
-        Set(sockets.filter(isSupportedGameConnection)).sorted(by: socketOrder)
+    public static func select(
+        from sockets: [ObservedSocket],
+        activeEndpoint: HearthstoneGameEndpoint? = nil
+    ) -> [ObservedSocket] {
+        Set(sockets.filter { isSupportedGameConnection($0, activeEndpoint: activeEndpoint) })
+            .sorted(by: socketOrder)
     }
 
-    private static func isSupportedGameConnection(_ socket: ObservedSocket) -> Bool {
-        socket.transport == .tcp
-            && socket.remotePort == 3_724
-            && !isLoopback(socket.remoteAddress, family: socket.family)
+    private static func isSupportedGameConnection(
+        _ socket: ObservedSocket,
+        activeEndpoint: HearthstoneGameEndpoint?
+    ) -> Bool {
+        guard socket.transport == .tcp,
+              !isLoopback(socket.remoteAddress, family: socket.family)
+        else {
+            return false
+        }
+        guard let activeEndpoint else { return socket.remotePort == 3_724 }
+        return socket.family == activeEndpoint.family
+            && socket.remoteAddress == activeEndpoint.address
+            && socket.remotePort == activeEndpoint.port
     }
 
     private static func isLoopback(_ address: String, family: AddressFamily) -> Bool {
