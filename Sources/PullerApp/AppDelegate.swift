@@ -61,12 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
-        let status = NSMenuItem(title: viewModel.label, action: nil, keyEquivalent: "")
-        status.isEnabled = false
-        menu.addItem(status)
-        menu.addItem(.separator())
         menu.addItem(item("重新检测", action: #selector(redetect)))
-        menu.addItem(item("恢复网络", action: #selector(restore)))
         let serviceModel = ServiceMenuModel(
             installationStatus: serviceInstallationChecker.status(),
             isOperationInProgress: serviceCoordinator.isOperationInProgress
@@ -120,13 +115,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         alert.messageText = aboutCoordinator.metadata.applicationName
         alert.informativeText = aboutCoordinator.metadata.informativeText
-        alert.addButton(withTitle: "打开 GitHub / Open GitHub")
-        alert.addButton(withTitle: "好 / OK")
+        alert.addButton(withTitle: "Go GitHub")
+        alert.addButton(withTitle: "OK")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         guard aboutCoordinator.openRepository() else {
             let failureAlert = NSAlert()
             failureAlert.messageText = AboutCoordinator.openFailureMessage
-            failureAlert.addButton(withTitle: "好 / OK")
+            failureAlert.addButton(withTitle: "OK")
             failureAlert.runModal()
             return
         }

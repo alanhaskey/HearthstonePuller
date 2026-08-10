@@ -14,6 +14,9 @@ struct ServiceMenuModel: Equatable, Sendable {
         case .notInstalled:
             title = "安装服务"
             operation = .install
+        case .installedButUnavailable:
+            title = "重新启动服务"
+            operation = .install
         }
         isEnabled = !isOperationInProgress
     }
