@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Validate release version
         id: release
@@ -62,10 +64,27 @@ jobs:
           asset_name: ${{ steps.release.outputs.asset_name }}
         shell: bash
         run: |
+          set -euo pipefail
+          previous_tag="$(git tag --sort=-version:refname | grep '^v' | grep -v "^${GITHUB_REF_NAME}$" | head -n 1 || true)"
+          notes_file="release-notes.md"
+          {
+            echo "## 更新内容 / Changes"
+            echo
+            echo "本版本包含以下更新： / This release includes:"
+            echo
+            if [[ -n "$previous_tag" ]]; then
+              git log --pretty=format:'- `%h` %s' "${previous_tag}..${GITHUB_REF_NAME}"
+              echo
+              echo
+              echo "完整变更记录 / Full changelog: [${previous_tag}...${GITHUB_REF_NAME}](https://github.com/${GITHUB_REPOSITORY}/compare/${previous_tag}...${GITHUB_REF_NAME})"
+            else
+              echo "- 首个版本发布 / Initial release"
+            fi
+          } > "$notes_file"
           gh release create "$GITHUB_REF_NAME" \
             "dist/$asset_name" \
             "dist/$asset_name.sha256" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
-            --generate-notes \
+            --notes-file "$notes_file" \
             --title "HearthstonePuller $version"
