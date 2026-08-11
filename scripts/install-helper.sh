@@ -116,8 +116,26 @@ bootstrap_service() {
   return 1
 }
 
-bootstrap_service com.yunnn.hearthstone-puller.recovery "$recovery_plist"
-bootstrap_service com.yunnn.hearthstone-puller.helper "$helper_plist"
+show_recent_logs() {
+  local log_path
+  for log_path in \
+    "$root_prefix/Library/Logs/HearthstonePuller/recovery.log" \
+    "$root_prefix/Library/Logs/HearthstonePuller/helper.log"; do
+    if [[ -f "$log_path" ]]; then
+      echo "--- $(basename "$log_path") ---" >&2
+      /usr/bin/tail -20 "$log_path" >&2 || true
+    fi
+  done
+}
+
+if ! bootstrap_service com.yunnn.hearthstone-puller.recovery "$recovery_plist"; then
+  show_recent_logs
+  exit 1
+fi
+if ! bootstrap_service com.yunnn.hearthstone-puller.helper "$helper_plist"; then
+  show_recent_logs
+  exit 1
+fi
 
 wait_for_socket() {
   local socket_path="$1" attempt
@@ -132,8 +150,14 @@ wait_for_socket() {
 }
 
 if [[ "$testing" != "1" ]]; then
-  wait_for_socket "$root_prefix/var/run/hearthstone-puller/recovery.sock"
-  wait_for_socket "$root_prefix/var/run/hearthstone-puller/helper.sock"
+  if ! wait_for_socket "$root_prefix/var/run/hearthstone-puller/recovery.sock"; then
+    show_recent_logs
+    exit 1
+  fi
+  if ! wait_for_socket "$root_prefix/var/run/hearthstone-puller/helper.sock"; then
+    show_recent_logs
+    exit 1
+  fi
 fi
 
 PULLER_INSTALL_ROOT="$install_root" PULLER_INSTALL_TESTING="$testing" \
