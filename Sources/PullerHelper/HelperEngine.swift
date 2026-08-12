@@ -37,6 +37,7 @@ public struct SystemHelperTimeSource: HelperTimeSource {
 public actor HelperEngine {
     public static let recoveryDelay: TimeInterval = 10.0
     public static let resetAttemptLimit = Duration.seconds(10)
+    public static let delayedResponseLimit = Duration.seconds(5)
     public static let reconnectLimit = Duration.seconds(15)
     public static let resetPollInterval = Duration.milliseconds(50)
     public static let idlePollInterval = Duration.milliseconds(500)
@@ -54,6 +55,7 @@ public actor HelperEngine {
     private var observationTask: Task<Void, Never>?
     private var notTriggeredTargets: Set<ObservedSocket> = []
     private var resetDeadline: Duration?
+    private var delayedResponseDeadline: Duration?
     private var reconnectDeadline: Duration?
 
     public init(
@@ -111,7 +113,12 @@ public actor HelperEngine {
 
     private func beginCut() async -> HelperResponse {
         let currentSnapshot = snapshot()
-        guard !provisioningCut, currentSnapshot.state != .cutting else {
+        let activeStates: Set<PullerState> = [
+            .cutting,
+            .waitingForGameResponse,
+            .waitingForReconnect,
+        ]
+        guard !provisioningCut, !activeStates.contains(currentSnapshot.state) else {
             return .rejected(
                 code: "already_cutting",
                 message: "a cut is already active",
@@ -154,14 +161,17 @@ public actor HelperEngine {
             let rules = try PFRuleRenderer.render(targets)
 
             let resetStartedAt = time.elapsed
+            diagnostic("cut requested targets=\(targets.count)")
             let recoveryDeadline = time.wallNow.addingTimeInterval(Self.recoveryDelay)
             try await recovery.arm(deadline: recoveryDeadline)
             recoveryArmed = true
             try await pf.replaceAnchor(with: rules.rules)
             try await pf.killStates(rules.statePairs)
+            diagnostic("PF block installed and states cleared")
 
             machine.observe(connectionCount: targets.count)
             resetDeadline = resetStartedAt + Self.resetAttemptLimit
+            delayedResponseDeadline = nil
             reconnectDeadline = nil
             try machine.beginCut()
             notTriggeredTargets.removeAll()
@@ -211,7 +221,10 @@ public actor HelperEngine {
                 }
             }
 
-            try await completeUntriggeredReset(capturedTargets: capturedTargets)
+            try await beginDelayedResponseWait(
+                process: process,
+                capturedTargets: capturedTargets
+            )
         } catch is CancellationError {
             return
         } catch {
@@ -222,17 +235,43 @@ public actor HelperEngine {
     private func completeReset() async throws {
         try await pf.flushAnchor()
         try await recovery.flushNow()
+        diagnostic("game connection disappeared; waiting for reconnect")
         machine.resetCompleted()
         resetDeadline = nil
         reconnectDeadline = time.elapsed + Self.reconnectLimit
     }
 
-    private func completeUntriggeredReset(
+    private func beginDelayedResponseWait(
+        process: VerifiedProcess,
         capturedTargets: Set<ObservedSocket>
     ) async throws {
         try await pf.flushAnchor()
         try await recovery.flushNow()
+        resetDeadline = nil
+        delayedResponseDeadline = time.elapsed + Self.delayedResponseLimit
+        diagnostic("PF block released; waiting for delayed game response")
+        machine.beginWaitingForGameResponse()
+
+        while let deadline = delayedResponseDeadline, time.elapsed < deadline {
+            let remaining = deadline - time.elapsed
+            try await time.sleep(for: min(Self.resetPollInterval, remaining))
+            guard !Task.isCancelled else { return }
+
+            guard try sockets.startIdentity(pid: process.pid) == process.startIdentity else {
+                await targetDisappeared()
+                return
+            }
+            let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
+            let currentTargets = Set(selectGameConnections(from: observed))
+            if capturedTargets.isDisjoint(with: currentTargets) {
+                try await completeReset()
+                try await runReconnectWait(process: process)
+                return
+            }
+        }
+
         notTriggeredTargets = capturedTargets
+        diagnostic("game connection remained after delayed response window")
         machine.markNotTriggered()
         clearPhaseDeadlines()
         cutTask = nil
@@ -254,6 +293,7 @@ public actor HelperEngine {
             }
             let targets = try currentGameConnections(for: process)
             if !targets.isEmpty {
+                diagnostic("new game connection observed")
                 machine.restore(connectionCount: targets.count)
                 clearPhaseDeadlines()
                 cutTask = nil
@@ -262,6 +302,7 @@ public actor HelperEngine {
         }
 
         machine.reconnectTimedOut()
+        diagnostic("reconnect observation timed out")
         clearPhaseDeadlines()
         cutTask = nil
     }
@@ -293,7 +334,7 @@ public actor HelperEngine {
             do {
                 try await time.sleep(for: Self.idlePollInterval)
                 guard !Task.isCancelled else { return }
-                if ![.cutting, .waitingForReconnect].contains(snapshot().state),
+                if ![.cutting, .waitingForGameResponse, .waitingForReconnect].contains(snapshot().state),
                    !provisioningCut {
                     refreshObservedStatus()
                 }
@@ -374,6 +415,11 @@ public actor HelperEngine {
                 until: resetDeadline,
                 limit: Self.resetAttemptLimit
             )
+        case .waitingForGameResponse:
+            remaining = remainingMilliseconds(
+                until: delayedResponseDeadline,
+                limit: Self.delayedResponseLimit
+            )
         case .waitingForReconnect:
             remaining = remainingMilliseconds(
                 until: reconnectDeadline,
@@ -398,6 +444,12 @@ public actor HelperEngine {
 
     private func clearPhaseDeadlines() {
         resetDeadline = nil
+        delayedResponseDeadline = nil
         reconnectDeadline = nil
+    }
+
+    private func diagnostic(_ message: String) {
+        let milliseconds = Int((time.wallNow.timeIntervalSince1970 * 1_000).rounded())
+        fputs("HearthstonePuller [\(milliseconds)]: \(message)\n", stderr)
     }
 }

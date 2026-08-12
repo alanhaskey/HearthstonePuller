@@ -35,6 +35,8 @@ public struct InterruptionStateMachine: Sendable {
         switch state {
         case .cutting:
             break
+        case .waitingForGameResponse:
+            break
         case .notTriggered:
             break
         case .waitingForReconnect:
@@ -60,13 +62,19 @@ public struct InterruptionStateMachine: Sendable {
     }
 
     public mutating func resetCompleted() {
-        guard state == .cutting else { return }
+        guard state == .cutting || state == .waitingForGameResponse else { return }
         state = .waitingForReconnect
         connectionCount = 0
     }
 
-    public mutating func markNotTriggered() {
+    public mutating func beginWaitingForGameResponse() {
         guard state == .cutting else { return }
+        state = .waitingForGameResponse
+        message = nil
+    }
+
+    public mutating func markNotTriggered() {
+        guard state == .waitingForGameResponse else { return }
         state = .notTriggered
         message = nil
     }

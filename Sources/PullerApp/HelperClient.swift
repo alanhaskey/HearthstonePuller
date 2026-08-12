@@ -106,7 +106,8 @@ public final class PanelStateViewModel {
         case .helperUnavailable: "需要安装"
         case .absent: "未检测到对局"
         case .ready: "一键拔线"
-        case .cutting: "等待连接"
+        case .cutting: "正在断线"
+        case .waitingForGameResponse: "等待游戏响应"
         case .notTriggered: "未触发"
         case .waitingForReconnect: "等待重连"
         case .error: "服务异常"
@@ -116,7 +117,10 @@ public final class PanelStateViewModel {
     public var label: String { title }
 
     public var countdown: String? {
-        guard state == .cutting || state == .waitingForReconnect else { return nil }
+        guard state == .cutting
+                || state == .waitingForGameResponse
+                || state == .waitingForReconnect
+        else { return nil }
         let seconds = max(1, (snapshot.remainingMilliseconds + 999) / 1_000)
         return "\(seconds)s"
     }
@@ -129,7 +133,7 @@ public final class PanelStateViewModel {
     public var isEnabled: Bool {
         switch state {
         case .helperUnavailable, .ready, .notTriggered, .error: true
-        case .absent, .cutting, .waitingForReconnect: false
+        case .absent, .cutting, .waitingForGameResponse, .waitingForReconnect: false
         }
     }
 

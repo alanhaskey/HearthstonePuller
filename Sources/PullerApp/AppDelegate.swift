@@ -51,7 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             while let self, !Task.isCancelled {
                 await self.viewModel.refresh()
                 let interval: Duration = switch self.viewModel.state {
-                case .cutting, .waitingForReconnect: .milliseconds(100)
+                case .cutting, .waitingForGameResponse, .waitingForReconnect: .milliseconds(100)
                 default: .milliseconds(500)
                 }
                 try? await Task.sleep(for: interval)

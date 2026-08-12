@@ -150,6 +150,7 @@ final class PullerButtonView: NSView {
         case .absent: NSColor(calibratedWhite: 0.25, alpha: 0.94)
         case .ready: NSColor(calibratedRed: 0.09, green: 0.50, blue: 0.30, alpha: 0.96)
         case .cutting: NSColor(calibratedRed: 0.72, green: 0.16, blue: 0.18, alpha: 0.97)
+        case .waitingForGameResponse: NSColor(calibratedRed: 0.56, green: 0.28, blue: 0.10, alpha: 0.97)
         case .notTriggered: NSColor(calibratedRed: 0.46, green: 0.35, blue: 0.12, alpha: 0.96)
         case .waitingForReconnect: NSColor(calibratedRed: 0.65, green: 0.37, blue: 0.08, alpha: 0.96)
         case .error: NSColor(calibratedRed: 0.66, green: 0.25, blue: 0.12, alpha: 0.97)
