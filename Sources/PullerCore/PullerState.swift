@@ -3,6 +3,7 @@ public enum PullerState: String, Codable, Sendable, Equatable {
     case absent
     case ready
     case cutting
+    case waitingForGameResponse
     case notTriggered
     case waitingForReconnect
     case error
