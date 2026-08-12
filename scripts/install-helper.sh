@@ -72,22 +72,93 @@ install_file 0644 "$config_tmp" "$config_dst"
 rm -f "$config_tmp"
 trap - EXIT
 
-"$launchctl_bin" bootout system/com.yunnn.hearthstone-puller.helper 2>/dev/null || true
-"$launchctl_bin" bootout system/com.yunnn.hearthstone-puller.recovery 2>/dev/null || true
-
-bootstrap_service() {
-  local plist="$1" attempt
-  for attempt in 1 2 3 4; do
-    if "$launchctl_bin" bootstrap system "$plist" 2>/dev/null; then
-      return
+wait_for_service_absent() {
+  local label="$1" attempt
+  for attempt in {1..20}; do
+    if ! "$launchctl_bin" print "system/$label" >/dev/null 2>&1; then
+      return 0
     fi
-    /bin/sleep 0.2
+    /bin/sleep 0.25
   done
-  "$launchctl_bin" bootstrap system "$plist"
+  echo "service did not stop: $label" >&2
+  return 1
 }
 
-bootstrap_service "$recovery_plist"
-bootstrap_service "$helper_plist"
+bootout_service() {
+  local label="$1"
+  "$launchctl_bin" bootout "system/$label" 2>/dev/null || true
+  wait_for_service_absent "$label"
+}
+
+bootout_service com.yunnn.hearthstone-puller.helper
+bootout_service com.yunnn.hearthstone-puller.recovery
+
+bootstrap_service() {
+  local label="$1" plist="$2" attempt diagnostics=""
+  for attempt in {1..20}; do
+    diagnostics="$(mktemp /tmp/hearthstone-launchctl.XXXXXX)"
+    if "$launchctl_bin" bootstrap system "$plist" 2>"$diagnostics"; then
+      rm -f "$diagnostics"
+      return
+    fi
+    if "$launchctl_bin" print "system/$label" >/dev/null 2>&1; then
+      rm -f "$diagnostics"
+      return
+    fi
+    last_error="$(/usr/bin/tr '\n' ' ' < "$diagnostics" | /usr/bin/sed 's/[[:space:]]\+/ /g')"
+    rm -f "$diagnostics"
+    /bin/sleep 0.5
+  done
+  echo "failed to bootstrap service: $label" >&2
+  if [[ -n "${last_error:-}" ]]; then
+    echo "launchctl: $last_error" >&2
+  fi
+  return 1
+}
+
+show_recent_logs() {
+  local log_path
+  for log_path in \
+    "$root_prefix/Library/Logs/HearthstonePuller/recovery.log" \
+    "$root_prefix/Library/Logs/HearthstonePuller/helper.log"; do
+    if [[ -f "$log_path" ]]; then
+      echo "--- $(basename "$log_path") ---" >&2
+      /usr/bin/tail -20 "$log_path" >&2 || true
+    fi
+  done
+}
+
+if ! bootstrap_service com.yunnn.hearthstone-puller.recovery "$recovery_plist"; then
+  show_recent_logs
+  exit 1
+fi
+if ! bootstrap_service com.yunnn.hearthstone-puller.helper "$helper_plist"; then
+  show_recent_logs
+  exit 1
+fi
+
+wait_for_socket() {
+  local socket_path="$1" attempt
+  for attempt in {1..20}; do
+    if [[ -S "$socket_path" ]]; then
+      return 0
+    fi
+    /bin/sleep 0.25
+  done
+  echo "service socket was not created: $socket_path" >&2
+  return 1
+}
+
+if [[ "$testing" != "1" ]]; then
+  if ! wait_for_socket "$root_prefix/var/run/hearthstone-puller/recovery.sock"; then
+    show_recent_logs
+    exit 1
+  fi
+  if ! wait_for_socket "$root_prefix/var/run/hearthstone-puller/helper.sock"; then
+    show_recent_logs
+    exit 1
+  fi
+fi
 
 PULLER_INSTALL_ROOT="$install_root" PULLER_INSTALL_TESTING="$testing" \
   PULLER_LAUNCHCTL="$launchctl_bin" bash "$script_dir/verify-installation.sh"
