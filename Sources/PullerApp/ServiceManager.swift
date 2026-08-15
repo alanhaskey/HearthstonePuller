@@ -115,7 +115,7 @@ actor ServiceManager {
     static let appleScript = """
     on run argv
         try
-            do shell script "/bin/bash " & quoted form of (item 1 of argv) with administrator privileges
+            do shell script "/bin/bash " & quoted form of (item 1 of argv) & " " & quoted form of (item 2 of argv) with administrator privileges
             return "__PULLER_OK__"
         on error messageText number errorNumber
             if errorNumber is -128 then return "__PULLER_CANCELLED__"
@@ -150,7 +150,7 @@ actor ServiceManager {
 
         let invocation = ServiceProcessInvocation(
             executable: URL(fileURLWithPath: "/usr/bin/osascript"),
-            arguments: ["-e", Self.appleScript, "--", scriptURL.path],
+            arguments: ["-e", Self.appleScript, "--", scriptURL.path, String(getuid())],
             outputLimit: Self.outputLimit
         )
 

@@ -192,13 +192,19 @@ public actor UnixRecoveryListener: RecoveryListening {
             guard errno == ENOENT else {
                 throw RecoverySocketError.systemCall(operation: "lstat(parent)", errno: errno)
             }
-            guard mkdir(path, 0o755) == 0 else {
+            if mkdir(path, 0o755) == 0 {
+                guard chown(path, 0, 0) == 0 else {
+                    throw RecoverySocketError.systemCall(operation: "chown(parent)", errno: errno)
+                }
+            } else if errno != EEXIST {
                 throw RecoverySocketError.systemCall(operation: "mkdir", errno: errno)
             }
-            guard chown(path, 0, 0) == 0 else {
-                throw RecoverySocketError.systemCall(operation: "chown(parent)", errno: errno)
+            guard lstat(path, &metadata) == 0 else {
+                throw RecoverySocketError.systemCall(
+                    operation: "lstat(parent after mkdir)",
+                    errno: errno
+                )
             }
-            return
         }
 
         let isDirectory = metadata.st_mode & S_IFMT == S_IFDIR

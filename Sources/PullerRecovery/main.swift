@@ -1,4 +1,3 @@
-import AppKit
 import Darwin
 import Foundation
 import PullerSystem
@@ -25,16 +24,6 @@ terminationSource.setEventHandler(handler: terminateRecoveryDaemon)
 interruptSource.setEventHandler(handler: terminateRecoveryDaemon)
 terminationSource.resume()
 interruptSource.resume()
-
-let wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
-    forName: NSWorkspace.didWakeNotification,
-    object: nil,
-    queue: nil
-) { _ in
-    Task {
-        try? await recoveryEngine.handleWake()
-    }
-}
 
 Task {
     do {

@@ -22,7 +22,8 @@ else
   resource_dir="$script_dir"
 fi
 launchctl_bin="${PULLER_LAUNCHCTL:-/bin/launchctl}"
-console_uid="${PULLER_CONSOLE_UID:-$(stat -f %u /dev/console)}"
+requested_uid="${1:-}"
+console_uid="${PULLER_CONSOLE_UID:-${requested_uid:-$(stat -f %u /dev/console)}}"
 
 if ! [[ "$console_uid" =~ ^[0-9]+$ ]] || (( console_uid < 501 )); then
   echo "invalid console UID" >&2
@@ -74,7 +75,7 @@ trap - EXIT
 
 wait_for_service_absent() {
   local label="$1" attempt
-  for attempt in {1..20}; do
+  for attempt in {1..40}; do
     if ! "$launchctl_bin" print "system/$label" >/dev/null 2>&1; then
       return 0
     fi
@@ -128,18 +129,9 @@ show_recent_logs() {
   done
 }
 
-if ! bootstrap_service com.yunnn.hearthstone-puller.recovery "$recovery_plist"; then
-  show_recent_logs
-  exit 1
-fi
-if ! bootstrap_service com.yunnn.hearthstone-puller.helper "$helper_plist"; then
-  show_recent_logs
-  exit 1
-fi
-
 wait_for_socket() {
   local socket_path="$1" attempt
-  for attempt in {1..20}; do
+  for attempt in {1..40}; do
     if [[ -S "$socket_path" ]]; then
       return 0
     fi
@@ -149,11 +141,22 @@ wait_for_socket() {
   return 1
 }
 
+if ! bootstrap_service com.yunnn.hearthstone-puller.recovery "$recovery_plist"; then
+  show_recent_logs
+  exit 1
+fi
 if [[ "$testing" != "1" ]]; then
   if ! wait_for_socket "$root_prefix/var/run/hearthstone-puller/recovery.sock"; then
     show_recent_logs
     exit 1
   fi
+fi
+if ! bootstrap_service com.yunnn.hearthstone-puller.helper "$helper_plist"; then
+  show_recent_logs
+  exit 1
+fi
+
+if [[ "$testing" != "1" ]]; then
   if ! wait_for_socket "$root_prefix/var/run/hearthstone-puller/helper.sock"; then
     show_recent_logs
     exit 1
