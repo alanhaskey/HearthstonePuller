@@ -46,6 +46,7 @@ public actor HelperServer {
                         state: .error,
                         connectionCount: 0,
                         remainingMilliseconds: 0,
+                        errorCode: .unauthorizedClient,
                         message: "unauthorized local peer"
                     )
                 )

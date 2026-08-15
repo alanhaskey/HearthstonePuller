@@ -52,7 +52,10 @@ Task {
         signalRuntime.install(server: server, engine: engine)
         try await server.start()
     } catch {
-        fputs("hearthstone-puller-helper failed to start\n", stderr)
+        fputs(
+            "hearthstone-puller-helper failed to start: \(String(reflecting: error))\n",
+            stderr
+        )
         exit(EXIT_FAILURE)
     }
 }

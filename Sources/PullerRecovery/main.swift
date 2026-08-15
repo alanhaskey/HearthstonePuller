@@ -40,7 +40,10 @@ Task {
     do {
         try await recoveryServer.start()
     } catch {
-        fputs("hearthstone-puller-recovery failed to start\n", stderr)
+        fputs(
+            "hearthstone-puller-recovery failed to start: \(String(reflecting: error))\n",
+            stderr
+        )
         exit(EXIT_FAILURE)
     }
 }

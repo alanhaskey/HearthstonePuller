@@ -26,6 +26,7 @@ public actor HelperClient: HelperRequestSending {
         var buffer = Array(repeating: UInt8(0), count: 4_096)
         while true {
             let count = recv(descriptor, &buffer, buffer.count, 0)
+            if count < 0 { throw HelperClientError.systemCall(errno) }
             guard count > 0 else { throw HelperClientError.disconnected }
             if let payload = try decoder.append(buffer.prefix(count)).first {
                 return try JSONDecoder().decode(HelperResponse.self, from: payload)
@@ -110,11 +111,17 @@ public final class PanelStateViewModel {
         case .waitingForGameResponse: "等待游戏响应"
         case .notTriggered: "未触发"
         case .waitingForReconnect: "等待重连"
-        case .error: "服务异常"
+        case .error:
+            snapshot.errorCode.map { "错误 \($0.rawValue)" } ?? "未知错误"
         }
     }
 
     public var label: String { title }
+
+    public var diagnosticSummary: String? {
+        guard let code = snapshot.errorCode else { return nil }
+        return "\(code.rawValue)：\(Self.localizedReason(for: code))"
+    }
 
     public var countdown: String? {
         guard state == .cutting
@@ -164,12 +171,52 @@ public final class PanelStateViewModel {
         do {
             apply(try await client.send(request).snapshot)
         } catch {
+            let diagnostic = Self.diagnostic(for: error)
             snapshot = PullerSnapshot(
                 state: state == .helperUnavailable ? .helperUnavailable : .error,
                 connectionCount: 0,
                 remainingMilliseconds: 0,
-                message: "helper unavailable"
+                errorCode: diagnostic.code,
+                message: diagnostic.detail
             )
+        }
+    }
+
+    private static func diagnostic(for error: Error) -> (
+        code: PullerErrorCode,
+        detail: String
+    ) {
+        if let clientError = error as? HelperClientError {
+            switch clientError {
+            case .pathTooLong:
+                return (.helperResponseInvalid, "helper socket path is invalid")
+            case .disconnected:
+                return (.helperConnectionInterrupted, "helper connection closed unexpectedly")
+            case let .systemCall(systemError):
+                let code: PullerErrorCode = switch systemError {
+                case ENOENT, ECONNREFUSED: .helperSocketUnavailable
+                default: .helperConnectionInterrupted
+                }
+                return (code, "helper IPC failed with errno \(systemError)")
+            }
+        }
+        return (
+            .helperResponseInvalid,
+            "invalid helper response: \(String(reflecting: error))"
+        )
+    }
+
+    private static func localizedReason(for code: PullerErrorCode) -> String {
+        switch code {
+        case .helperSocketUnavailable: "无法连接后台服务"
+        case .helperConnectionInterrupted: "后台服务连接中断或超时"
+        case .helperResponseInvalid: "后台服务响应无效"
+        case .statusObservationFailed: "无法读取炉石进程或连接状态"
+        case .cutSetupFailed: "无法配置断线规则"
+        case .restoreFailed: "无法恢复网络规则"
+        case .connectionResetFailed: "断线流程执行失败"
+        case .resetCleanupFailed: "断线清理失败"
+        case .unauthorizedClient: "当前用户与服务配置不匹配"
         }
     }
 }
