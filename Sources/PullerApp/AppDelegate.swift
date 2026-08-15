@@ -68,17 +68,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
         if let diagnosticSummary = viewModel.diagnosticSummary {
-            let diagnosticItem = NSMenuItem(
-                title: diagnosticSummary,
-                action: nil,
-                keyEquivalent: ""
-            )
-            diagnosticItem.isEnabled = false
-            menu.addItem(diagnosticItem)
+            menu.addItem(item(diagnosticSummary, action: #selector(copyDiagnostics)))
             menu.addItem(.separator())
         }
-        menu.addItem(item("重新检测", action: #selector(redetect)))
-        menu.addItem(item("检查更新", action: #selector(checkForUpdatesFromMenu)))
+        menu.addItem(item(L10n.text("重新检测", "Check Again"), action: #selector(redetect)))
+        menu.addItem(item(L10n.text("检查更新", "Check for Updates"), action: #selector(checkForUpdatesFromMenu)))
         let serviceModel = ServiceMenuModel(
             installationStatus: serviceInstallationChecker.status(),
             isOperationInProgress: serviceCoordinator.isOperationInProgress
@@ -91,8 +85,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         serviceItem.isEnabled = serviceModel.isEnabled
         menu.addItem(serviceItem)
         menu.addItem(.separator())
-        menu.addItem(item("关于 HearthstonePuller", action: #selector(showAbout)))
-        menu.addItem(item("退出", action: #selector(quit)))
+        menu.addItem(item(
+            L10n.text("关于 HearthstonePuller", "About HearthstonePuller"),
+            action: #selector(showAbout)
+        ))
+        menu.addItem(item(L10n.text("退出", "Quit"), action: #selector(quit)))
         return menu
     }
 
@@ -104,6 +101,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func redetect() {
         Task { await viewModel.refresh() }
+    }
+
+    @objc private func copyDiagnostics() {
+        guard let report = DiagnosticReportBuilder().build(
+            viewModel: viewModel,
+            appVersion: aboutCoordinator.metadata.version
+        ) else {
+            return
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard pasteboard.setString(report, forType: .string) else {
+            show(.init(message: L10n.text("复制诊断信息失败", "Unable to copy diagnostics")))
+            return
+        }
+        show(.init(message: L10n.text("诊断信息已复制", "Diagnostics copied")))
     }
 
     @objc private func checkForUpdatesFromMenu() {
@@ -125,26 +138,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch result {
         case let .updateAvailable(release):
             let alert = NSAlert()
-            alert.messageText = "发现新版本 / Update Available"
-            alert.informativeText = "当前版本：\(aboutCoordinator.metadata.version)\n最新版本：\(release.version.map { "\($0.major).\($0.minor).\($0.patch)" } ?? release.tagName)"
-            alert.addButton(withTitle: "前往下载 / Download")
-            alert.addButton(withTitle: "稍后 / Later")
+            alert.messageText = L10n.text("发现新版本", "Update Available")
+            let latestVersion = release.version.map {
+                "\($0.major).\($0.minor).\($0.patch)"
+            } ?? release.tagName
+            alert.informativeText = L10n.text(
+                "当前版本：\(aboutCoordinator.metadata.version)\n最新版本：\(latestVersion)",
+                "Current version: \(aboutCoordinator.metadata.version)\nLatest version: \(latestVersion)"
+            )
+            alert.addButton(withTitle: L10n.text("前往下载", "Download"))
+            alert.addButton(withTitle: L10n.text("稍后", "Later"))
             if alert.runModal() == .alertFirstButtonReturn {
                 if !aboutCoordinator.open(release.htmlURL) {
                     let failureAlert = NSAlert()
                     failureAlert.messageText = AboutCoordinator.openFailureMessage
-                    failureAlert.addButton(withTitle: "OK")
+                    failureAlert.addButton(withTitle: L10n.text("确定", "OK"))
                     failureAlert.runModal()
                 }
             }
         case .upToDate:
             guard manual else { return }
-            show(.init(message: "已是最新版本 / Already up to date"))
+            show(.init(message: L10n.text("已是最新版本", "Already up to date")))
         case .unavailable:
             guard manual else { return }
             show(.init(
-                message: "暂时无法检查更新 / Update Check Unavailable",
-                informativeText: "请检查网络连接，或稍后重试。\nCheck your network connection and try again later."
+                message: L10n.text("暂时无法检查更新", "Update Check Unavailable"),
+                informativeText: L10n.text(
+                    "请检查网络连接，或稍后重试。",
+                    "Check your network connection and try again later."
+                )
             ))
         }
     }
@@ -167,7 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let informativeText = notice.informativeText {
             alert.informativeText = informativeText
         }
-        alert.addButton(withTitle: "好")
+        alert.addButton(withTitle: L10n.text("好", "OK"))
         alert.runModal()
     }
 
@@ -175,13 +197,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         alert.messageText = aboutCoordinator.metadata.applicationName
         alert.informativeText = aboutCoordinator.metadata.informativeText
-        alert.addButton(withTitle: "Go GitHub")
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: L10n.text("前往 GitHub", "Go to GitHub"))
+        alert.addButton(withTitle: L10n.text("确定", "OK"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         guard aboutCoordinator.openRepository() else {
             let failureAlert = NSAlert()
             failureAlert.messageText = AboutCoordinator.openFailureMessage
-            failureAlert.addButton(withTitle: "OK")
+            failureAlert.addButton(withTitle: L10n.text("确定", "OK"))
             failureAlert.runModal()
             return
         }

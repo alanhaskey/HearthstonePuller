@@ -11,7 +11,9 @@ final class PullerButtonView: NSView {
     var onDrag: ((NSPoint) -> Void)?
     var menuProvider: (() -> NSMenu)?
 
-    private let titleLabel = NSTextField(labelWithString: "需要安装")
+    private let titleLabel = NSTextField(
+        labelWithString: L10n.text("需要安装", "Install Service")
+    )
     private let countdownLabel = NSTextField(labelWithString: "")
     private var mouseDownLocation: NSPoint?
     private var lastDragLocation: NSPoint?

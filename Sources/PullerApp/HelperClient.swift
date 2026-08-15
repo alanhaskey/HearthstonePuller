@@ -104,15 +104,17 @@ public final class PanelStateViewModel {
 
     public var title: String {
         switch state {
-        case .helperUnavailable: "需要安装"
-        case .absent: "未检测到对局"
-        case .ready: "一键拔线"
-        case .cutting: "正在断线"
-        case .waitingForGameResponse: "等待游戏响应"
-        case .notTriggered: "未触发"
-        case .waitingForReconnect: "等待重连"
+        case .helperUnavailable: L10n.text("需要安装", "Install Service")
+        case .absent: L10n.text("未检测到对局", "No Match Detected")
+        case .ready: L10n.text("一键拔线", "Disconnect")
+        case .cutting: L10n.text("正在断线", "Disconnecting")
+        case .waitingForGameResponse: L10n.text("等待游戏响应", "Waiting for Game")
+        case .notTriggered: L10n.text("未触发", "Not Triggered")
+        case .waitingForReconnect: L10n.text("等待重连", "Waiting to Reconnect")
         case .error:
-            snapshot.errorCode.map { "错误 \($0.rawValue)" } ?? "未知错误"
+            snapshot.errorCode.map {
+                "\(L10n.text("错误", "Error")) \($0.rawValue)"
+            } ?? L10n.text("未知错误", "Unknown Error")
         }
     }
 
@@ -120,7 +122,8 @@ public final class PanelStateViewModel {
 
     public var diagnosticSummary: String? {
         guard let code = snapshot.errorCode else { return nil }
-        return "\(code.rawValue)：\(Self.localizedReason(for: code))"
+        let separator = L10n.language == .chinese ? "：" : ": "
+        return "\(code.rawValue)\(separator)\(localizedErrorReason(for: code))"
     }
 
     public var countdown: String? {
@@ -206,17 +209,26 @@ public final class PanelStateViewModel {
         )
     }
 
-    private static func localizedReason(for code: PullerErrorCode) -> String {
+    func localizedErrorReason(for code: PullerErrorCode) -> String {
         switch code {
-        case .helperSocketUnavailable: "无法连接后台服务"
-        case .helperConnectionInterrupted: "后台服务连接中断或超时"
-        case .helperResponseInvalid: "后台服务响应无效"
-        case .statusObservationFailed: "无法读取炉石进程或连接状态"
-        case .cutSetupFailed: "无法配置断线规则"
-        case .restoreFailed: "无法恢复网络规则"
-        case .connectionResetFailed: "断线流程执行失败"
-        case .resetCleanupFailed: "断线清理失败"
-        case .unauthorizedClient: "当前用户与服务配置不匹配"
+        case .helperSocketUnavailable:
+            L10n.text("无法连接后台服务", "Unable to connect to the background service")
+        case .helperConnectionInterrupted:
+            L10n.text("后台服务连接中断或超时", "Background service connection was interrupted or timed out")
+        case .helperResponseInvalid:
+            L10n.text("后台服务响应无效", "The background service returned an invalid response")
+        case .statusObservationFailed:
+            L10n.text("无法读取炉石进程或连接状态", "Unable to inspect Hearthstone process or connection state")
+        case .cutSetupFailed:
+            L10n.text("无法配置断线规则", "Unable to configure the disconnect rules")
+        case .restoreFailed:
+            L10n.text("无法恢复网络规则", "Unable to restore the network rules")
+        case .connectionResetFailed:
+            L10n.text("断线流程执行失败", "The disconnect workflow failed")
+        case .resetCleanupFailed:
+            L10n.text("断线清理失败", "Disconnect cleanup failed")
+        case .unauthorizedClient:
+            L10n.text("当前用户与服务配置不匹配", "The current user does not match the service configuration")
         }
     }
 }

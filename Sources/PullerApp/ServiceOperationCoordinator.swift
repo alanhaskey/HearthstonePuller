@@ -13,8 +13,8 @@ struct ServiceOperationNotice: Equatable, Sendable {
 
 @MainActor
 final class ServiceOperationCoordinator {
-    static let installMenuTitle = "安装服务"
-    static let uninstallMenuTitle = "卸载服务"
+    static var installMenuTitle: String { L10n.text("安装服务", "Install Service") }
+    static var uninstallMenuTitle: String { L10n.text("卸载服务", "Uninstall Service") }
 
     var onNotice: ((ServiceOperationNotice) -> Void)?
     private(set) var isOperationInProgress = false
@@ -47,7 +47,7 @@ final class ServiceOperationCoordinator {
 
         switch await manager.perform(operation) {
         case .succeeded(.install):
-            onNotice?(.init(message: "服务安装成功"))
+            onNotice?(.init(message: L10n.text("服务安装成功", "Service installed successfully")))
             await waitForInstalledService()
         case .succeeded(.uninstall):
             viewModel.apply(PullerSnapshot(
@@ -55,18 +55,20 @@ final class ServiceOperationCoordinator {
                 connectionCount: 0,
                 remainingMilliseconds: 0
             ))
-            onNotice?(.init(message: "服务卸载成功"))
+            onNotice?(.init(message: L10n.text("服务卸载成功", "Service uninstalled successfully")))
         case .cancelled:
-            onNotice?(.init(message: "操作已取消"))
+            onNotice?(.init(message: L10n.text("操作已取消", "Operation cancelled")))
         case .failed(.incompletePackage):
-            onNotice?(.init(message: "应用程序包不完整"))
+            onNotice?(.init(message: L10n.text("应用程序包不完整", "The application bundle is incomplete")))
         case let .failed(failure):
             onNotice?(.init(
-                message: operation == .install ? "服务安装失败" : "服务卸载失败",
+                message: operation == .install
+                    ? L10n.text("服务安装失败", "Service installation failed")
+                    : L10n.text("服务卸载失败", "Service removal failed"),
                 informativeText: diagnostics(for: failure)
             ))
         case .busy:
-            onNotice?(.init(message: "服务操作正在进行"))
+            onNotice?(.init(message: L10n.text("服务操作正在进行", "A service operation is already in progress")))
         }
     }
 

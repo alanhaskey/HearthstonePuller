@@ -9,13 +9,13 @@ struct ServiceMenuModel: Equatable, Sendable {
     ) {
         switch installationStatus {
         case .installed:
-            title = "卸载服务"
+            title = L10n.text("卸载服务", "Uninstall Service")
             operation = .uninstall
         case .notInstalled:
-            title = "安装服务"
+            title = L10n.text("安装服务", "Install Service")
             operation = .install
         case .installedButUnavailable:
-            title = "重新启动服务"
+            title = L10n.text("重新启动服务", "Restart Service")
             operation = .install
         }
         isEnabled = !isOperationInProgress
