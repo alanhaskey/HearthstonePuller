@@ -183,10 +183,11 @@ public actor HelperEngine {
             }
             return .accepted(snapshot())
         } catch {
+            let detail = "cut setup failed: \(String(reflecting: error))"
             if recoveryArmed {
-                await failOpen(message: "cut setup failed")
+                await failOpen(code: .cutSetupFailed, message: detail)
             } else {
-                machine.fail("cut setup failed")
+                machine.fail(.cutSetupFailed, message: detail)
             }
             return .rejected(
                 code: "cut_failed",
@@ -228,7 +229,10 @@ public actor HelperEngine {
         } catch is CancellationError {
             return
         } catch {
-            await failOpen(message: "game connection reset failed")
+            await failOpen(
+                code: .connectionResetFailed,
+                message: "game connection reset failed: \(String(reflecting: error))"
+            )
         }
     }
 
@@ -320,7 +324,10 @@ public actor HelperEngine {
             machine.restore(connectionCount: count)
             return .accepted(snapshot())
         } catch {
-            machine.fail("restore failed")
+            machine.fail(
+                .restoreFailed,
+                message: "restore failed: \(String(reflecting: error))"
+            )
             return .rejected(
                 code: "restore_failed",
                 message: "unable to restore network",
@@ -341,7 +348,10 @@ public actor HelperEngine {
             } catch is CancellationError {
                 return
             } catch {
-                machine.fail("status observation failed")
+                machine.fail(
+                    .statusObservationFailed,
+                    message: "status observation failed: \(String(reflecting: error))"
+                )
             }
         }
     }
@@ -357,7 +367,10 @@ public actor HelperEngine {
             }
             machine.observe(connectionCount: targets.count)
         } catch {
-            machine.fail("status observation failed")
+            machine.fail(
+                .statusObservationFailed,
+                message: "status observation failed: \(String(reflecting: error))"
+            )
         }
     }
 
@@ -393,16 +406,19 @@ public actor HelperEngine {
             cutTask = nil
             machine.markAbsent()
         } catch {
-            await failOpen(message: "reset cleanup failed")
+            await failOpen(
+                code: .resetCleanupFailed,
+                message: "reset cleanup failed: \(String(reflecting: error))"
+            )
         }
     }
 
-    private func failOpen(message: String) async {
+    private func failOpen(code: PullerErrorCode, message: String) async {
         try? await pf.flushAnchor()
         cutTask = nil
         notTriggeredTargets.removeAll()
         clearPhaseDeadlines()
-        machine.fail(message)
+        machine.fail(code, message: message)
         try? await recovery.flushNow()
     }
 

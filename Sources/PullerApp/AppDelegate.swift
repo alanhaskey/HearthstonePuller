@@ -61,6 +61,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        if let diagnosticSummary = viewModel.diagnosticSummary {
+            let diagnosticItem = NSMenuItem(
+                title: diagnosticSummary,
+                action: nil,
+                keyEquivalent: ""
+            )
+            diagnosticItem.isEnabled = false
+            menu.addItem(diagnosticItem)
+            menu.addItem(.separator())
+        }
         menu.addItem(item("重新检测", action: #selector(redetect)))
         let serviceModel = ServiceMenuModel(
             installationStatus: serviceInstallationChecker.status(),

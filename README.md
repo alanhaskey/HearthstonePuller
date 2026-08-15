@@ -55,6 +55,10 @@ App 使用本地签名且未经过 Apple 公证。首次打开下载版本时，
 - Yunnn
 - <https://github.com/alanhaskey/HearthstonePuller>
 
+### 许可
+
+本项目采用 [PolyForm Noncommercial License 1.0.0](LICENSE)，仅允许非商业用途。复制、修改或分发时必须保留许可证和作者 Yunnn 的版权署名。任何商业用途必须事先取得作者书面授权；作者保留对未经授权使用追究责任的权利。
+
 ## English
 
 HearthstonePuller is a macOS connection reset utility for Hearthstone. Once a match is detected, click the floating button to make the game enter its reconnect flow.
@@ -107,3 +111,7 @@ Intentionally disrupting a game connection may violate game, platform, or tourna
 
 - Yunnn
 - <https://github.com/alanhaskey/HearthstonePuller>
+
+### License
+
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE) for noncommercial use only. Copies, modifications, and distributions must preserve the license and the copyright attribution to Yunnn. Commercial use requires prior written permission from the author. The author reserves the right to enforce these terms against unauthorized use.

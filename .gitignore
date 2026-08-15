@@ -1,9 +1,9 @@
-/Tests/
-/docs/
-/.build/
-/build/
-/.swiftpm/
-/.vscode/
+.build/
+build/
+.swiftpm/
 *.xcuserstate
 .DS_Store
-/.superpowers/
+.vscode/
+.superpowers/
+docs/
+Tests/

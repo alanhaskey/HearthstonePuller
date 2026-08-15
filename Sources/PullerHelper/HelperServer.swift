@@ -46,6 +46,7 @@ public actor HelperServer {
                         state: .error,
                         connectionCount: 0,
                         remainingMilliseconds: 0,
+                        errorCode: .unauthorizedClient,
                         message: "unauthorized local peer"
                     )
                 )
@@ -227,8 +228,20 @@ public actor UnixHelperListener: HelperListening {
 
     private static func ensureParent(_ path: String) throws {
         var metadata = stat()
-        guard lstat(path, &metadata) == 0 else {
-            throw HelperSocketError.systemCall(operation: "lstat(parent)", errno: errno)
+        if lstat(path, &metadata) != 0 {
+            guard errno == ENOENT else {
+                throw HelperSocketError.systemCall(operation: "lstat(parent)", errno: errno)
+            }
+            if mkdir(path, 0o755) == 0 {
+                guard chown(path, 0, 0) == 0 else {
+                    throw HelperSocketError.systemCall(operation: "chown(parent)", errno: errno)
+                }
+            } else if errno != EEXIST {
+                throw HelperSocketError.systemCall(operation: "mkdir", errno: errno)
+            }
+            guard lstat(path, &metadata) == 0 else {
+                throw HelperSocketError.systemCall(operation: "lstat(parent after mkdir)", errno: errno)
+            }
         }
         let safe = metadata.st_mode & S_IFMT == S_IFDIR
             && metadata.st_uid == 0

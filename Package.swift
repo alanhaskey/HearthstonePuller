@@ -17,8 +17,7 @@ var targets: [Target] = [
     ),
     .executableTarget(
         name: "PullerRecovery",
-        dependencies: ["PullerCore", "PullerSystem"],
-        linkerSettings: [.linkedFramework("AppKit")]
+        dependencies: ["PullerCore", "PullerSystem"]
     ),
     .executableTarget(
         name: "PullerHelper",

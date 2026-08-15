@@ -1,4 +1,3 @@
-import AppKit
 import Darwin
 import Foundation
 import PullerSystem
@@ -26,21 +25,14 @@ interruptSource.setEventHandler(handler: terminateRecoveryDaemon)
 terminationSource.resume()
 interruptSource.resume()
 
-let wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
-    forName: NSWorkspace.didWakeNotification,
-    object: nil,
-    queue: nil
-) { _ in
-    Task {
-        try? await recoveryEngine.handleWake()
-    }
-}
-
 Task {
     do {
         try await recoveryServer.start()
     } catch {
-        fputs("hearthstone-puller-recovery failed to start\n", stderr)
+        fputs(
+            "hearthstone-puller-recovery failed to start: \(String(reflecting: error))\n",
+            stderr
+        )
         exit(EXIT_FAILURE)
     }
 }
