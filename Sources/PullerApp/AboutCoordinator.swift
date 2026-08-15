@@ -51,4 +51,8 @@ final class AboutCoordinator {
     func openRepository() -> Bool {
         opener.open(metadata.repositoryURL)
     }
+
+    func open(_ url: URL) -> Bool {
+        opener.open(url)
+    }
 }
