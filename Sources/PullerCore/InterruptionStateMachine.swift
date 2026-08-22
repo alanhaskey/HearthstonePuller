@@ -8,6 +8,8 @@ public enum PullerErrorCode: String, Codable, Equatable, Sendable {
     case connectionResetFailed = "HSP-204"
     case resetCleanupFailed = "HSP-205"
     case unauthorizedClient = "HSP-206"
+    case disconnectNotTriggered = "HSP-207"
+    case pfRulesNotLoaded = "HSP-208"
 }
 
 public struct PullerSnapshot: Codable, Equatable, Sendable {
@@ -92,11 +94,11 @@ public struct InterruptionStateMachine: Sendable {
         message = nil
     }
 
-    public mutating func markNotTriggered() {
+    public mutating func markNotTriggered(message: String) {
         guard state == .waitingForGameResponse else { return }
         state = .notTriggered
-        errorCode = nil
-        message = nil
+        errorCode = .disconnectNotTriggered
+        self.message = message
     }
 
     public mutating func reconnectTimedOut() {

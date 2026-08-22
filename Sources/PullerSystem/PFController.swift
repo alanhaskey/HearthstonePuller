@@ -91,6 +91,7 @@ public struct ProcessCommandRunner: CommandRunning {
 
 public enum PFControllerError: Error, Equatable, Sendable {
     case appleAnchorUnavailable
+    case anchorRulesNotLoaded
     case invalidEnableToken
     case unsafeStatePair
     case commandFailed(exitCode: Int32, stderr: String)
@@ -129,19 +130,35 @@ public actor PFController: PFControlling {
             arguments: ["-a", PFRuleSet.anchor, "-f", "-"],
             stdin: Data(rules.utf8)
         )
+        let loaded = try await run(arguments: ["-a", PFRuleSet.anchor, "-sr"])
+        let loadedRules = Self.normalizedRules(Self.boundedString(loaded.stdout))
+        let expectedRules = rules
+            .split(whereSeparator: \Character.isNewline)
+            .map(String.init)
+            .map(Self.normalizedRules)
+        guard !expectedRules.isEmpty,
+              expectedRules.allSatisfy({ loadedRules.contains($0) })
+        else {
+            throw PFControllerError.anchorRulesNotLoaded
+        }
     }
 
     public func killStates(_ pairs: [StatePair]) async throws {
-        for pair in Set(pairs).sorted(by: Self.statePairOrder) {
-            guard Self.isNumeric(pair.localAddress, family: pair.family),
-                  Self.isNumeric(pair.remoteAddress, family: pair.family)
-            else {
-                throw PFControllerError.unsafeStatePair
+        let uniquePairs = Set(pairs).sorted(by: Self.statePairOrder)
+        for attempt in 0..<3 {
+            for pair in uniquePairs {
+                guard Self.isNumeric(pair.localAddress, family: pair.family),
+                      Self.isNumeric(pair.remoteAddress, family: pair.family)
+                else {
+                    throw PFControllerError.unsafeStatePair
+                }
+                _ = try await run(arguments: [
+                    "-k", pair.localAddress,
+                    "-k", pair.remoteAddress,
+                ])
             }
-            _ = try await run(arguments: [
-                "-k", pair.localAddress,
-                "-k", pair.remoteAddress,
-            ])
+            guard attempt < 2 else { continue }
+            try? await Task.sleep(for: .milliseconds(50))
         }
     }
 
@@ -176,6 +193,10 @@ public actor PFController: PFControlling {
 
     private static func boundedString(_ data: Data) -> String {
         String(decoding: data.prefix(outputLimit), as: UTF8.self)
+    }
+
+    private static func normalizedRules(_ value: String) -> String {
+        value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     private static func enableToken(stdout: Data, stderr: Data) -> String? {

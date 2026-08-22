@@ -149,7 +149,11 @@ public actor HelperEngine {
             }
 
             let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
-            let targets = selectGameConnections(from: observed)
+            let activeEndpoint = gameEndpointProvider.activeEndpoint()
+            let targets = HearthstoneGameConnectionSelector.select(
+                from: observed,
+                activeEndpoint: activeEndpoint
+            )
             guard !targets.isEmpty else {
                 machine.markAbsent()
                 return .rejected(
@@ -161,13 +165,15 @@ public actor HelperEngine {
             let rules = try PFRuleRenderer.render(targets)
 
             let resetStartedAt = time.elapsed
-            diagnostic("cut requested targets=\(targets.count)")
+            diagnostic(
+                "cut requested activeEndpoint=\(activeEndpoint.map(Self.endpointSummary) ?? "none") targets=\(targets.count) \(targets.map(Self.socketSummary).joined(separator: "; "))"
+            )
             let recoveryDeadline = time.wallNow.addingTimeInterval(Self.recoveryDelay)
             try await recovery.arm(deadline: recoveryDeadline)
             recoveryArmed = true
             try await pf.replaceAnchor(with: rules.rules)
             try await pf.killStates(rules.statePairs)
-            diagnostic("PF block installed and states cleared")
+            diagnostic("PF block installed, verified, and states cleared")
 
             machine.observe(connectionCount: targets.count)
             resetDeadline = resetStartedAt + Self.resetAttemptLimit
@@ -185,9 +191,19 @@ public actor HelperEngine {
         } catch {
             let detail = "cut setup failed: \(String(reflecting: error))"
             if recoveryArmed {
-                await failOpen(code: .cutSetupFailed, message: detail)
+                let code: PullerErrorCode = if case PFControllerError.anchorRulesNotLoaded = error {
+                    .pfRulesNotLoaded
+                } else {
+                    .cutSetupFailed
+                }
+                await failOpen(code: code, message: detail)
             } else {
-                machine.fail(.cutSetupFailed, message: detail)
+                let code: PullerErrorCode = if case PFControllerError.anchorRulesNotLoaded = error {
+                    .pfRulesNotLoaded
+                } else {
+                    .cutSetupFailed
+                }
+                machine.fail(code, message: detail)
             }
             return .rejected(
                 code: "cut_failed",
@@ -275,8 +291,11 @@ public actor HelperEngine {
         }
 
         notTriggeredTargets = capturedTargets
-        diagnostic("game connection remained after delayed response window")
-        machine.markNotTriggered()
+        let detail = "target connection did not reset: \(capturedTargets.map(Self.socketSummary).joined(separator: "; "))"
+        diagnostic(
+            "game connection remained after delayed response window \(detail)"
+        )
+        machine.markNotTriggered(message: detail)
         clearPhaseDeadlines()
         cutTask = nil
     }
@@ -467,5 +486,13 @@ public actor HelperEngine {
     private func diagnostic(_ message: String) {
         let milliseconds = Int((time.wallNow.timeIntervalSince1970 * 1_000).rounded())
         fputs("HearthstonePuller [\(milliseconds)]: \(message)\n", stderr)
+    }
+
+    private static func socketSummary(_ socket: ObservedSocket) -> String {
+        "\(socket.family.rawValue)/\(socket.transport.rawValue) \(socket.localAddress):\(socket.localPort)->\(socket.remoteAddress):\(socket.remotePort)"
+    }
+
+    private static func endpointSummary(_ endpoint: HearthstoneGameEndpoint) -> String {
+        "\(endpoint.family.rawValue) \(endpoint.address):\(endpoint.port)"
     }
 }

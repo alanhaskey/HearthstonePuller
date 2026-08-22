@@ -229,6 +229,16 @@ public final class PanelStateViewModel {
             L10n.text("断线清理失败", "Disconnect cleanup failed")
         case .unauthorizedClient:
             L10n.text("当前用户与服务配置不匹配", "The current user does not match the service configuration")
+        case .disconnectNotTriggered:
+            L10n.text(
+                "已识别游戏连接，但未能将其重置",
+                "The game connection was identified but was not reset"
+            )
+        case .pfRulesNotLoaded:
+            L10n.text(
+                "系统未确认断线规则已生效，请检查系统网络过滤器或 VPN",
+                "macOS did not confirm the disconnect rules; check VPNs or network filters"
+            )
         }
     }
 }

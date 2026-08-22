@@ -92,7 +92,12 @@ public struct HearthstoneGameLogEndpointProvider: HearthstoneGameEndpointProvidi
                 endpoint = nil
                 continue
             }
-            guard let marker = line.range(of: "Network.GotoGameServe() - address=") else {
+            // The method name has varied between client builds (Serve/Server)
+            // and spacing around the assignment is not stable. Restrict the
+            // match to GotoGame log entries, then parse the address field.
+            guard line.contains("Network.GotoGame"),
+                  let marker = line.range(of: "address=")
+            else {
                 continue
             }
             let remainder = line[marker.upperBound...].drop(while: \Character.isWhitespace)
