@@ -29,6 +29,10 @@ public enum PFRuleRendererError: Error, Equatable, Sendable {
 }
 
 public enum PFRuleRenderer {
+    /// Shared label used to read per-rule counters back from pfctl.
+    /// Keep this label free of spaces so it is easy to parse on every macOS version.
+    public static let ruleLabel = "HearthstonePuller"
+
     public static func render(_ sockets: [ObservedSocket]) throws -> PFRuleSet {
         let uniqueSockets = try Set(sockets.map(validated)).sorted(by: socketOrder)
         let lines = uniqueSockets.flatMap(ruleLines)
@@ -79,10 +83,12 @@ public enum PFRuleRenderer {
         return [
             "block return out quick \(family) proto \(transport) "
                 + "from \(socket.localAddress) port = \(localPort) "
-                + "to \(socket.remoteAddress) port = \(remotePort)",
+                + "to \(socket.remoteAddress) port = \(remotePort) "
+                + "label \"\(ruleLabel)\"",
             "block return in quick \(family) proto \(transport) "
                 + "from \(socket.remoteAddress) port = \(remotePort) "
-                + "to \(socket.localAddress) port = \(localPort)",
+                + "to \(socket.localAddress) port = \(localPort) "
+                + "label \"\(ruleLabel)\"",
         ]
     }
 

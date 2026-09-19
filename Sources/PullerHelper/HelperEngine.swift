@@ -172,8 +172,13 @@ public actor HelperEngine {
             try await recovery.arm(deadline: recoveryDeadline)
             recoveryArmed = true
             try await pf.replaceAnchor(with: rules.rules)
+            try await pf.resetRuleStatistics()
             try await pf.killStates(rules.statePairs)
-            diagnostic("PF block installed, verified, and states cleared")
+            if let pfStatus = try? await pf.diagnoseAnchor(for: rules.statePairs) {
+                diagnostic("PF prepared \(pfStatus.summary)")
+            } else {
+                diagnostic("PF prepared; runtime counters unavailable")
+            }
 
             machine.observe(connectionCount: targets.count)
             resetDeadline = resetStartedAt + Self.resetAttemptLimit
@@ -184,21 +189,22 @@ public actor HelperEngine {
             cutTask = Task { [weak self] in
                 await self?.runResetAttempt(
                     process: process,
-                    capturedTargets: Set(targets)
+                    capturedTargets: Set(targets),
+                    statePairs: rules.statePairs
                 )
             }
             return .accepted(snapshot())
         } catch {
             let detail = "cut setup failed: \(String(reflecting: error))"
             if recoveryArmed {
-                let code: PullerErrorCode = if case PFControllerError.anchorRulesNotLoaded = error {
+                let code: PullerErrorCode = if Self.isPFFailure(error) {
                     .pfRulesNotLoaded
                 } else {
                     .cutSetupFailed
                 }
                 await failOpen(code: code, message: detail)
             } else {
-                let code: PullerErrorCode = if case PFControllerError.anchorRulesNotLoaded = error {
+                let code: PullerErrorCode = if Self.isPFFailure(error) {
                     .pfRulesNotLoaded
                 } else {
                     .cutSetupFailed
@@ -215,7 +221,8 @@ public actor HelperEngine {
 
     private func runResetAttempt(
         process: VerifiedProcess,
-        capturedTargets: Set<ObservedSocket>
+        capturedTargets: Set<ObservedSocket>,
+        statePairs: [StatePair]
     ) async {
         guard let deadline = resetDeadline else { return }
 
@@ -232,6 +239,9 @@ public actor HelperEngine {
                 let observed = try sockets.sockets(pid: process.pid, allowLoopback: false)
                 let currentTargets = Set(selectGameConnections(from: observed))
                 if capturedTargets.isDisjoint(with: currentTargets) {
+                    if let pfStatus = try? await pf.diagnoseAnchor(for: statePairs) {
+                        diagnostic("PF matched before reset completion \(pfStatus.summary)")
+                    }
                     try await completeReset()
                     try await runReconnectWait(process: process)
                     return
@@ -240,7 +250,8 @@ public actor HelperEngine {
 
             try await beginDelayedResponseWait(
                 process: process,
-                capturedTargets: capturedTargets
+                capturedTargets: capturedTargets,
+                statePairs: statePairs
             )
         } catch is CancellationError {
             return
@@ -263,8 +274,15 @@ public actor HelperEngine {
 
     private func beginDelayedResponseWait(
         process: VerifiedProcess,
-        capturedTargets: Set<ObservedSocket>
+        capturedTargets: Set<ObservedSocket>,
+        statePairs: [StatePair]
     ) async throws {
+        // Capture counters before removing the rules. Once the anchor is flushed,
+        // pfctl can no longer tell us whether a packet ever hit the block rule.
+        let preReleaseDiagnostics = try? await pf.diagnoseAnchor(for: statePairs)
+        if let preReleaseDiagnostics {
+            diagnostic("PF response check before release \(preReleaseDiagnostics.summary)")
+        }
         try await pf.flushAnchor()
         try await recovery.flushNow()
         resetDeadline = nil
@@ -292,10 +310,11 @@ public actor HelperEngine {
 
         notTriggeredTargets = capturedTargets
         let detail = "target connection did not reset: \(capturedTargets.map(Self.socketSummary).joined(separator: "; "))"
+        let pfDetail = preReleaseDiagnostics.map { "; PF \($0.summary)" } ?? "; PF counters unavailable"
         diagnostic(
-            "game connection remained after delayed response window \(detail)"
+            "game connection remained after delayed response window \(detail)\(pfDetail)"
         )
-        machine.markNotTriggered(message: detail)
+        machine.markNotTriggered(message: detail + pfDetail)
         clearPhaseDeadlines()
         cutTask = nil
     }
@@ -494,5 +513,15 @@ public actor HelperEngine {
 
     private static func endpointSummary(_ endpoint: HearthstoneGameEndpoint) -> String {
         "\(endpoint.family.rawValue) \(endpoint.address):\(endpoint.port)"
+    }
+
+    private static func isPFFailure(_ error: Error) -> Bool {
+        guard let error = error as? PFControllerError else { return false }
+        switch error {
+        case .anchorRulesNotLoaded, .anchorNotAttached:
+            return true
+        default:
+            return false
+        }
     }
 }

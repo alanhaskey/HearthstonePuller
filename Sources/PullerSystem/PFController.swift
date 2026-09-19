@@ -23,8 +23,21 @@ public protocol PFControlling: Sendable {
     func enable() async throws
     func replaceAnchor(with rules: String) async throws
     func killStates(_ pairs: [StatePair]) async throws
+    func resetRuleStatistics() async throws
+    func diagnoseAnchor(for pairs: [StatePair]) async throws -> PFAnchorDiagnostics
     func flushAnchor() async throws
     func releaseEnableReference() async
+}
+
+public extension PFControlling {
+    /// Older test doubles and alternate controllers may not expose pfctl counters.
+    /// The real PFController overrides both methods; the defaults keep the protocol
+    /// source-compatible for callers that only need the original operations.
+    func resetRuleStatistics() async throws {}
+
+    func diagnoseAnchor(for pairs: [StatePair]) async throws -> PFAnchorDiagnostics {
+        .unavailable
+    }
 }
 
 public struct ProcessCommandRunner: CommandRunning {
@@ -91,10 +104,62 @@ public struct ProcessCommandRunner: CommandRunning {
 
 public enum PFControllerError: Error, Equatable, Sendable {
     case appleAnchorUnavailable
+    case anchorNotAttached
     case anchorRulesNotLoaded
     case invalidEnableToken
     case unsafeStatePair
     case commandFailed(exitCode: Int32, stderr: String)
+}
+
+public struct PFAnchorDiagnostics: Equatable, Sendable {
+    public let anchorAttached: Bool
+    public let loadedRuleCount: Int
+    public let evaluations: UInt64
+    public let packets: UInt64
+    public let bytes: UInt64
+    public let matchingStateCount: Int?
+
+    public static let unavailable = PFAnchorDiagnostics(
+        anchorAttached: false,
+        loadedRuleCount: 0,
+        evaluations: 0,
+        packets: 0,
+        bytes: 0,
+        matchingStateCount: nil
+    )
+
+    public init(
+        anchorAttached: Bool,
+        loadedRuleCount: Int,
+        evaluations: UInt64,
+        packets: UInt64,
+        bytes: UInt64,
+        matchingStateCount: Int?
+    ) {
+        self.anchorAttached = anchorAttached
+        self.loadedRuleCount = loadedRuleCount
+        self.evaluations = evaluations
+        self.packets = packets
+        self.bytes = bytes
+        self.matchingStateCount = matchingStateCount
+    }
+
+    public var matched: Bool { packets > 0 }
+
+    public var status: String {
+        if !anchorAttached { return "anchor-not-attached" }
+        if loadedRuleCount == 0 { return "rules-not-visible" }
+        if packets == 0 { return "rule-not-hit" }
+        if let matchingStateCount, matchingStateCount > 0 {
+            return "state-remained"
+        }
+        return "rule-hit"
+    }
+
+    public var summary: String {
+        let states = matchingStateCount.map(String.init) ?? "unknown"
+        return "status=\(status) anchorAttached=\(anchorAttached) rules=\(loadedRuleCount) evaluations=\(evaluations) packets=\(packets) bytes=\(bytes) matchingStates=\(states)"
+    }
 }
 
 public actor PFController: PFControlling {
@@ -141,6 +206,10 @@ public actor PFController: PFControlling {
         else {
             throw PFControllerError.anchorRulesNotLoaded
         }
+
+        // Loading a named anchor only creates its ruleset. It is effective only
+        // when its parent anchor is attached to the active root ruleset.
+        try await verifyAnchorAttachment()
     }
 
     public func killStates(_ pairs: [StatePair]) async throws {
@@ -160,6 +229,45 @@ public actor PFController: PFControlling {
             guard attempt < 2 else { continue }
             try? await Task.sleep(for: .milliseconds(50))
         }
+    }
+
+    public func resetRuleStatistics() async throws {
+        _ = try await run(arguments: ["-a", PFRuleSet.anchor, "-z"])
+    }
+
+    public func diagnoseAnchor(for pairs: [StatePair]) async throws -> PFAnchorDiagnostics {
+        let attached = try await anchorIsAttached()
+        let verboseRules = try await run(arguments: ["-a", PFRuleSet.anchor, "-vv", "-sr"])
+        let labels = try await run(arguments: ["-a", PFRuleSet.anchor, "-s", "labels"])
+        let states = try await run(arguments: ["-s", "states"])
+
+        let verboseText = Self.boundedString(verboseRules.stdout)
+        let labelText = Self.boundedString(labels.stdout)
+        let verboseRuleCount = verboseText
+            .split(whereSeparator: \.isNewline)
+            .filter { $0.contains("label \"\(PFRuleRenderer.ruleLabel)\"") }
+            .count
+        let loadedRuleCount = max(
+            verboseRuleCount,
+            labelText.split(whereSeparator: \.isNewline)
+                .filter { $0.contains(PFRuleRenderer.ruleLabel) }
+                .count
+        )
+
+        let labelCounters = Self.labelCounters(in: labelText)
+        let matchingStateCount = Self.matchingStateCount(
+            in: Self.boundedString(states.stdout),
+            pairs: pairs
+        )
+
+        return PFAnchorDiagnostics(
+            anchorAttached: attached,
+            loadedRuleCount: loadedRuleCount,
+            evaluations: labelCounters.evaluations,
+            packets: labelCounters.packets,
+            bytes: labelCounters.bytes,
+            matchingStateCount: matchingStateCount
+        )
     }
 
     public func flushAnchor() async throws {
@@ -191,12 +299,62 @@ public actor PFController: PFControlling {
         return result
     }
 
+    private func verifyAnchorAttachment() async throws {
+        guard try await anchorIsAttached() else {
+            throw PFControllerError.anchorNotAttached
+        }
+    }
+
+    private func anchorIsAttached() async throws -> Bool {
+        if let parent = try? await run(arguments: ["-a", "com.apple", "-s", "Anchors"]) {
+            let parentText = Self.boundedString(parent.stdout)
+            if parentText
+                .split(whereSeparator: \.isNewline)
+                .contains(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "hearthstone-puller" })
+            {
+                return true
+            }
+        }
+
+        // Apple ships the com.apple/* wildcard in the root ruleset on supported
+        // macOS versions. Keep this fallback for versions that do not print child
+        // anchors from `-s Anchors`.
+        let root = try await run(arguments: ["-sr"])
+        return Self.boundedString(root.stdout).contains(#"anchor "com.apple/*""#)
+    }
+
     private static func boundedString(_ data: Data) -> String {
         String(decoding: data.prefix(outputLimit), as: UTF8.self)
     }
 
     private static func normalizedRules(_ value: String) -> String {
         value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private static func labelCounters(in output: String) -> (evaluations: UInt64, packets: UInt64, bytes: UInt64) {
+        var totals = (evaluations: UInt64(0), packets: UInt64(0), bytes: UInt64(0))
+        for line in output.split(whereSeparator: \.isNewline) {
+            guard line.contains(PFRuleRenderer.ruleLabel) else { continue }
+            let values = line
+                .split(whereSeparator: { $0 == " " || $0 == "\t" })
+                .compactMap { UInt64($0.filter(\.isNumber)) }
+            guard values.count >= 3 else { continue }
+            totals.evaluations += values[values.count - 3]
+            totals.packets += values[values.count - 2]
+            totals.bytes += values[values.count - 1]
+        }
+        return totals
+    }
+
+    private static func matchingStateCount(in output: String, pairs: [StatePair]) -> Int? {
+        guard !pairs.isEmpty else { return 0 }
+        let lines = output.split(whereSeparator: \.isNewline).map(String.init)
+        let matches = lines.filter { line in
+            pairs.contains { pair in
+                line.contains(pair.localAddress) && line.contains(pair.remoteAddress)
+            }
+        }
+        return Set(matches).count
     }
 
     private static func enableToken(stdout: Data, stderr: Data) -> String? {
