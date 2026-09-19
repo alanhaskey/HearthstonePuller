@@ -60,7 +60,7 @@ private actor ResilientHelperHandler: HelperRequestHandling {
                     state: .error,
                     connectionCount: 0,
                     remainingMilliseconds: 0,
-                    errorCode: .cutSetupFailed,
+                    errorCode: .helperInitializationFailed,
                     message: startupDetail
                 )
             )

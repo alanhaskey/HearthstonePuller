@@ -10,6 +10,7 @@ public enum PullerErrorCode: String, Codable, Equatable, Sendable {
     case unauthorizedClient = "HSP-206"
     case disconnectNotTriggered = "HSP-207"
     case pfRulesNotLoaded = "HSP-208"
+    case helperInitializationFailed = "HSP-209"
 }
 
 public struct PullerSnapshot: Codable, Equatable, Sendable {

@@ -239,6 +239,11 @@ public final class PanelStateViewModel {
                 "系统未确认断线规则已生效，请检查系统网络过滤器或 VPN",
                 "macOS did not confirm the disconnect rules; check VPNs or network filters"
             )
+        case .helperInitializationFailed:
+            L10n.text(
+                "后台服务初始化失败，请查看错误详情",
+                "The background service could not initialize; see the error details"
+            )
         }
     }
 }

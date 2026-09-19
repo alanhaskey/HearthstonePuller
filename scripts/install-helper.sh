@@ -58,6 +58,31 @@ install_file() {
   fi
 }
 
+# Files downloaded from a browser may carry Apple's quarantine xattr.  macOS 27
+# refuses to bootstrap a LaunchDaemon whose plist (or executable) is still
+# quarantined, reporting only the misleading "Bootstrap failed: 5" to callers.
+# Remove just this attribute from the installed service artifacts; keep all
+# other metadata intact.
+clear_quarantine() {
+  local path
+  for path in "$@"; do
+    if [[ -e "$path" || -L "$path" ]]; then
+      /usr/bin/xattr -d com.apple.quarantine "$path" 2>/dev/null || true
+    fi
+  done
+}
+
+report_quarantine() {
+  local path found=1
+  for path in "$@"; do
+    if /usr/bin/xattr -p com.apple.quarantine "$path" >/dev/null 2>&1; then
+      echo "service artifact is still quarantined: $path" >&2
+      found=0
+    fi
+  done
+  return "$found"
+}
+
 install_file 0755 "$artifact_dir/hearthstone-puller-helper" "$helper_dst"
 install_file 0755 "$artifact_dir/hearthstone-puller-recovery" "$recovery_dst"
 install_file 0644 "$resource_dir/com.yunnn.hearthstone-puller.helper.plist" "$helper_plist"
@@ -72,6 +97,15 @@ printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
 install_file 0644 "$config_tmp" "$config_dst"
 rm -f "$config_tmp"
 trap - EXIT
+
+# Clear quarantine after every copy, before launchd sees the files.  This is
+# required for both freshly downloaded apps and upgrades over an older install.
+clear_quarantine "$helper_dst" "$recovery_dst" "$helper_plist" "$recovery_plist" "$config_dst"
+if report_quarantine "$helper_dst" "$recovery_dst" "$helper_plist" "$recovery_plist" "$config_dst"; then
+  echo "cannot install service: macOS quarantine metadata could not be removed" >&2
+  echo "Move the app to a writable local folder and try again." >&2
+  exit 1
+fi
 
 wait_for_service_absent() {
   local label="$1" attempt
@@ -113,6 +147,10 @@ bootstrap_service() {
   echo "failed to bootstrap service: $label" >&2
   if [[ -n "${last_error:-}" ]]; then
     echo "launchctl: $last_error" >&2
+  fi
+  if /usr/bin/xattr -p com.apple.quarantine "$plist" >/dev/null 2>&1; then
+    echo "launchd rejected a quarantined service file: $plist" >&2
+    echo "The installer could not clear com.apple.quarantine; check file permissions or macOS security settings." >&2
   fi
   return 1
 }
